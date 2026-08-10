@@ -145,48 +145,12 @@ func getProcessStatus() ProcessStatus {
 	ps.Running = true
 	ps.PID = pid
 
-	// Parse process start time for uptime
-	var comm string
-	var state rune
-	var ppid, pgrp, session, tty int
-	var tpgid int
-	var flags uint
-	var minflt, cminflt, majflt, cmajflt int
-	var utime, stime, cutime, cstime int64
-	var priority, nice int
-	var numThreads, itrealvalue int
+	// Parse process start time for uptime calculation
+	// /proc/[pid]/stat format: pid comm state ... starttime (field 22)
 	var starttime uint64
-	var vsize int64
-	var rss int64
-
 	fields := strings.Fields(string(statData))
 	if len(fields) >= 22 {
-		fmt.Sscanf(fields[0], "%d", &pid)
-		comm = fields[1]
-		state = rune(fields[2][0])
-		fmt.Sscanf(fields[3], "%d", &ppid)
-		fmt.Sscanf(fields[4], "%d", &pgrp)
-		fmt.Sscanf(fields[5], "%d", &session)
-		fmt.Sscanf(fields[6], "%d", &tty)
-		fmt.Sscanf(fields[7], "%d", &tpgid)
-		fmt.Sscanf(fields[8], "%d", &flags)
-		fmt.Sscanf(fields[9], "%d", &minflt)
-		fmt.Sscanf(fields[10], "%d", &cminflt)
-		fmt.Sscanf(fields[11], "%d", &majflt)
-		fmt.Sscanf(fields[12], "%d", &cmajflt)
-		fmt.Sscanf(fields[13], "%d", &utime)
-		fmt.Sscanf(fields[14], "%d", &stime)
-		fmt.Sscanf(fields[15], "%d", &cutime)
-		fmt.Sscanf(fields[16], "%d", &cstime)
-		fmt.Sscanf(fields[17], "%d", &priority)
-		fmt.Sscanf(fields[18], "%d", &nice)
-		fmt.Sscanf(fields[19], "%d", &numThreads)
-		fmt.Sscanf(fields[20], "%d", &itrealvalue)
 		fmt.Sscanf(fields[21], "%d", &starttime)
-
-		_ = comm
-		_ = state
-		_ = ppid
 	}
 
 	// Get system uptime and calculate process uptime
