@@ -1,0 +1,556 @@
+// tun2proxy-web — HTTP API server for managing tun2proxy on Android (KernelSU module)
+// Serves a REST API and a web control panel. Manages tun2proxy process lifecycle.
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+)
+
+// ========== Module Paths ==========
+
+var (
+	modDir     string
+	binary      string
+	ctlScript   string
+	configFile  string
+	logDir      string
+	runDir      string
+	webrootDir  string
+)
+
+func init() {
+	// Module directory: env var or derive from executable path
+	if d := os.Getenv("TUN2PROXY_MODDIR"); d != "" {
+		modDir = d
+	} else {
+		exe, _ := os.Executable()
+		// exe is at system/bin/tun2proxy-web, modDir is 3 levels up
+		modDir = filepath.Dir(filepath.Dir(filepath.Dir(exe)))
+	}
+
+	binary = filepath.Join(modDir, "system", "bin", "tun2proxy")
+	ctlScript = filepath.Join(modDir, "system", "bin", "tun2proxyctl")
+	webrootDir = filepath.Join(modDir, "webroot")
+
+	// Runtime data outside module (read-write)
+	configFile = "/data/adb/tun2proxy/config.json"
+	logDir = "/data/adb/tun2proxy/logs"
+	runDir = "/data/adb/tun2proxy/run"
+
+	// Override from env if set
+	if d := os.Getenv("TUN2PROXY_CONFIG"); d != "" {
+		configFile = d
+	}
+	if d := os.Getenv("TUN2PROXY_RUN_DIR"); d != "" {
+		runDir = d
+	}
+}
+
+// ========== Config Schema ==========
+
+type Config struct {
+	Version      string   `json:"version"`
+	Enabled      bool     `json:"enabled"`
+	TunName      string   `json:"tun_name"`
+	ProxyURL     string   `json:"proxy_url"`
+	DNSMode      string   `json:"dns_mode"`
+	BypassIPs    []string `json:"bypass_ips"`
+	TCPTimeout   int      `json:"tcp_timeout"`
+	UDPTimeout   int      `json:"udp_timeout"`
+	UDPGWServer  string   `json:"udpgw_server"`
+}
+
+var configMu sync.Mutex
+
+func loadConfig() (Config, error) {
+	configMu.Lock()
+	defer configMu.Unlock()
+
+	var cfg Config
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Return defaults
+			return Config{
+				Version:    "1.0",
+				TunName:    "tun0",
+				DNSMode:    "virtual",
+				TCPTimeout: 30,
+				UDPTimeout: 30,
+			}, nil
+		}
+		return cfg, err
+	}
+	err = json.Unmarshal(data, &cfg)
+	if err != nil {
+		return cfg, fmt.Errorf("invalid config JSON: %w", err)
+	}
+	return cfg, nil
+}
+
+func saveConfig(cfg Config) error {
+	configMu.Lock()
+	defer configMu.Unlock()
+
+	os.MkdirAll(filepath.Dir(configFile), 0755)
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(configFile, data, 0644)
+}
+
+// ========== Process Status ==========
+
+type ProcessStatus struct {
+	Running bool   `json:"running"`
+	PID     int    `json:"pid"`
+	Crashed bool   `json:"crashed"`
+	Uptime  string `json:"uptime"`
+}
+
+func getProcessStatus() ProcessStatus {
+	ps := ProcessStatus{}
+	pidFile := filepath.Join(runDir, "tun2proxy.pid")
+
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		return ps
+	}
+
+	var pid int
+	fmt.Sscanf(string(data), "%d", &pid)
+	if pid <= 0 {
+		return ps
+	}
+
+	// Check if process is alive
+	statFile := fmt.Sprintf("/proc/%d/stat", pid)
+	statData, err := os.ReadFile(statFile)
+	if err != nil {
+		ps.Crashed = true
+		ps.PID = pid
+		return ps
+	}
+
+	ps.Running = true
+	ps.PID = pid
+
+	// Parse process start time for uptime
+	var comm string
+	var state rune
+	var ppid, pgrp, session, tty int
+	var tpgid int
+	var flags uint
+	var minflt, cminflt, majflt, cmajflt int
+	var utime, stime, cutime, cstime int64
+	var priority, nice int
+	var numThreads, itrealvalue int
+	var starttime uint64
+	var vsize int64
+	var rss int64
+
+	fields := strings.Fields(string(statData))
+	if len(fields) >= 22 {
+		fmt.Sscanf(fields[0], "%d", &pid)
+		comm = fields[1]
+		state = rune(fields[2][0])
+		fmt.Sscanf(fields[3], "%d", &ppid)
+		fmt.Sscanf(fields[4], "%d", &pgrp)
+		fmt.Sscanf(fields[5], "%d", &session)
+		fmt.Sscanf(fields[6], "%d", &tty)
+		fmt.Sscanf(fields[7], "%d", &tpgid)
+		fmt.Sscanf(fields[8], "%d", &flags)
+		fmt.Sscanf(fields[9], "%d", &minflt)
+		fmt.Sscanf(fields[10], "%d", &cminflt)
+		fmt.Sscanf(fields[11], "%d", &majflt)
+		fmt.Sscanf(fields[12], "%d", &cmajflt)
+		fmt.Sscanf(fields[13], "%d", &utime)
+		fmt.Sscanf(fields[14], "%d", &stime)
+		fmt.Sscanf(fields[15], "%d", &cutime)
+		fmt.Sscanf(fields[16], "%d", &cstime)
+		fmt.Sscanf(fields[17], "%d", &priority)
+		fmt.Sscanf(fields[18], "%d", &nice)
+		fmt.Sscanf(fields[19], "%d", &numThreads)
+		fmt.Sscanf(fields[20], "%d", &itrealvalue)
+		fmt.Sscanf(fields[21], "%d", &starttime)
+
+		_ = comm
+		_ = state
+		_ = ppid
+	}
+
+	// Get system uptime and calculate process uptime
+	uptimeData, err := os.ReadFile("/proc/uptime")
+	if err == nil {
+		var uptimeSec float64
+		fmt.Sscanf(string(uptimeData), "%f", &uptimeSec)
+
+		// Clock ticks per second (usually 100 on Linux/Android)
+		clkTck := float64(100)
+		runtime := uptimeSec - float64(starttime)/clkTck
+		if runtime > 0 {
+			mins := int(runtime) / 60
+			secs := int(runtime) % 60
+			if mins > 0 {
+				ps.Uptime = fmt.Sprintf("%dm %ds", mins, secs)
+			} else {
+				ps.Uptime = fmt.Sprintf("%ds", secs)
+			}
+		}
+	}
+
+	return ps
+}
+
+// ========== Shell Execution Helpers ==========
+
+func runCtl(args ...string) (string, error) {
+	os.MkdirAll(runDir, 0755)
+	os.MkdirAll(logDir, 0755)
+
+	cmd := exec.Command("sh", append([]string{ctlScript}, args...)...)
+	cmd.Env = append(os.Environ(),
+		"TUN2PROXY_MODDIR="+modDir,
+		"TUN2PROXY_CONFIG="+configFile,
+		"TUN2PROXY_DATA=/data/adb/tun2proxy",
+	)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+// ========== CORS Middleware ==========
+
+func cors(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next(w, r)
+	}
+}
+
+// ========== JSON Helpers ==========
+
+func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// ========== API Handlers ==========
+
+// GET /api/status
+func apiStatus(w http.ResponseWriter, r *http.Request) {
+	cfg, err := loadConfig()
+	if err != nil {
+		writeError(w, 500, "Failed to load config: "+err.Error())
+		return
+	}
+
+	ps := getProcessStatus()
+
+	// Get web backend uptime (simple approach)
+	webRunning := true // we're handling the request
+
+	writeJSON(w, 200, map[string]interface{}{
+		"running":       ps.Running,
+		"crashed":       ps.Crashed,
+		"pid":           ps.PID,
+		"uptime":        ps.Uptime,
+		"web_running":   webRunning,
+		"config":        cfg,
+		"tun_available": tunAvailable(),
+	})
+}
+
+// GET /api/config
+func apiConfigGet(w http.ResponseWriter, r *http.Request) {
+	cfg, err := loadConfig()
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, cfg)
+}
+
+// PUT /api/config
+func apiConfigPut(w http.ResponseWriter, r *http.Request) {
+	var cfg Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		writeError(w, 400, "Invalid JSON: "+err.Error())
+		return
+	}
+
+	// Validate required fields
+	if cfg.ProxyURL == "" {
+		writeError(w, 400, "proxy_url is required")
+		return
+	}
+	if cfg.DNSMode == "" {
+		cfg.DNSMode = "virtual"
+	}
+	if cfg.TunName == "" {
+		cfg.TunName = "tun0"
+	}
+	if cfg.TCPTimeout <= 0 {
+		cfg.TCPTimeout = 30
+	}
+	if cfg.UDPTimeout <= 0 {
+		cfg.UDPTimeout = 30
+	}
+	cfg.Version = "1.0"
+
+	if err := saveConfig(cfg); err != nil {
+		writeError(w, 500, "Failed to save config: "+err.Error())
+		return
+	}
+
+	writeJSON(w, 200, map[string]interface{}{
+		"ok":     true,
+		"config": cfg,
+	})
+}
+
+// POST /api/start
+func apiStart(w http.ResponseWriter, r *http.Request) {
+	// First save config if body is provided
+	if r.Body != nil && r.ContentLength > 0 {
+		var cfg Config
+		if err := json.NewDecoder(r.Body).Decode(&cfg); err == nil && cfg.ProxyURL != "" {
+			saveConfig(cfg)
+		}
+	}
+
+	// Check binary exists
+	if _, err := os.Stat(binary); os.IsNotExist(err) {
+		writeError(w, 500, "tun2proxy binary not found. Build it from the tun2proxy/ submodule.")
+		return
+	}
+
+	output, err := runCtl("start")
+	if err != nil {
+		writeJSON(w, 500, map[string]interface{}{
+			"ok":     false,
+			"error":  "Failed to start tun2proxy",
+			"output": output,
+		})
+		return
+	}
+
+	// Wait briefly and check status
+	time.Sleep(500 * time.Millisecond)
+	ps := getProcessStatus()
+
+	writeJSON(w, 200, map[string]interface{}{
+		"ok":      ps.Running,
+		"pid":     ps.PID,
+		"running": ps.Running,
+		"output":  output,
+	})
+}
+
+// POST /api/stop
+func apiStop(w http.ResponseWriter, r *http.Request) {
+	output, err := runCtl("stop")
+	if err != nil {
+		writeJSON(w, 500, map[string]interface{}{
+			"ok":     false,
+			"error":  "Failed to stop tun2proxy",
+			"output": output,
+		})
+		return
+	}
+
+	writeJSON(w, 200, map[string]interface{}{
+		"ok":     true,
+		"output": output,
+	})
+}
+
+// POST /api/restart
+func apiRestart(w http.ResponseWriter, r *http.Request) {
+	output, err := runCtl("restart")
+	if err != nil {
+		writeJSON(w, 500, map[string]interface{}{
+			"ok":     false,
+			"error":  "Failed to restart tun2proxy",
+			"output": output,
+		})
+		return
+	}
+
+	time.Sleep(500 * time.Millisecond)
+	ps := getProcessStatus()
+
+	writeJSON(w, 200, map[string]interface{}{
+		"ok":      ps.Running,
+		"pid":     ps.PID,
+		"running": ps.Running,
+		"output":  output,
+	})
+}
+
+// GET /api/logs
+func apiLogs(w http.ResponseWriter, r *http.Request) {
+	lines := r.URL.Query().Get("lines")
+	if lines == "" {
+		lines = "200"
+	}
+
+	logFile := filepath.Join(logDir, "tun2proxy.log")
+
+	// Use tail to get recent lines
+	cmd := exec.Command("tail", "-n", lines, logFile)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// If tail fails (e.g., file doesn't exist), return empty
+		if os.IsNotExist(err) {
+			w.Header().Set("Content-Type", "text/plain")
+			w.Write([]byte("(no log file yet — start tun2proxy to generate logs)"))
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		w.Write([]byte(fmt.Sprintf("(error reading log: %v)", err)))
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write(output)
+}
+
+// GET /api/check
+func apiCheck(w http.ResponseWriter, r *http.Request) {
+	output, _ := runCtl("check")
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte(output))
+}
+
+// ========== Helpers ==========
+
+func tunAvailable() bool {
+	if _, err := os.Stat("/dev/tun"); err == nil {
+		return true
+	}
+	if _, err := os.Stat("/dev/net/tun"); err == nil {
+		return true
+	}
+	return false
+}
+
+// ========== Main ==========
+
+func main() {
+	port := os.Getenv("TUN2PROXY_WEB_PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	// Create required directories at startup
+	os.MkdirAll(logDir, 0755)
+	os.MkdirAll(runDir, 0755)
+
+	// Log startup
+	log.Printf("tun2proxy-web starting on :%s", port)
+	log.Printf("  modDir:      %s", modDir)
+	log.Printf("  binary:      %s", binary)
+	log.Printf("  ctlScript:   %s", ctlScript)
+	log.Printf("  configFile:  %s", configFile)
+	log.Printf("  webrootDir:  %s", webrootDir)
+
+	mux := http.NewServeMux()
+
+	// API routes (CORS-enabled)
+	mux.HandleFunc("/api/status", cors(apiStatus))
+	mux.HandleFunc("/api/config", cors(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case "GET":
+			apiConfigGet(w, r)
+		case "PUT":
+			apiConfigPut(w, r)
+		default:
+			writeError(w, 405, "Method not allowed")
+		}
+	}))
+	mux.HandleFunc("/api/start", cors(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			writeError(w, 405, "Use POST")
+			return
+		}
+		apiStart(w, r)
+	}))
+	mux.HandleFunc("/api/stop", cors(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			writeError(w, 405, "Use POST")
+			return
+		}
+		apiStop(w, r)
+	}))
+	mux.HandleFunc("/api/restart", cors(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			writeError(w, 405, "Use POST")
+			return
+		}
+		apiRestart(w, r)
+	}))
+	mux.HandleFunc("/api/logs", cors(apiLogs))
+	mux.HandleFunc("/api/check", cors(apiCheck))
+
+	// Health check
+	mux.HandleFunc("/api/health", cors(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]interface{}{
+			"status": "ok",
+			"time":   time.Now().Format(time.RFC3339),
+		})
+	}))
+
+	// Serve webroot static files
+	fs := http.FileServer(http.Dir(webrootDir))
+	mux.Handle("/", cors(func(w http.ResponseWriter, r *http.Request) {
+		// Don't let FileServer handle /api/ routes
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
+		// Serve index.html for root
+		if r.URL.Path == "/" {
+			r.URL.Path = "/index.html"
+		}
+		fs.ServeHTTP(w, r)
+	}))
+
+	server := &http.Server{
+		Addr:         "0.0.0.0:" + port,
+		Handler:      mux,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	log.Printf("Listening on http://0.0.0.0:%s", port)
+	log.Printf("Web UI:   http://<phone-ip>:%s", port)
+	log.Printf("Status:   http://127.0.0.1:%s/api/status", port)
+
+	if err := server.ListenAndServe(); err != nil {
+		log.Fatalf("Server error: %v", err)
+	}
+}

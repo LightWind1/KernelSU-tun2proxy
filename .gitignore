@@ -1,0 +1,16 @@
+# Claude AI assistant
+.claude/
+
+# Go build artifacts
+cmd/tun2proxy-web/go.mod
+cmd/tun2proxy-web/go.sum
+
+# Rust build artifacts
+tun2proxy/target/
+
+# Packaging output
+*.zip
+
+# OS files
+Thumbs.db
+.DS_Store

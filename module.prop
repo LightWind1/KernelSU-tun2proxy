@@ -1,0 +1,6 @@
+id=tun2proxy
+name=Tun2Proxy for Android
+version=v1.0.0
+versionCode=1
+author=KernelSU Community
+description=Route all device traffic through SOCKS5/HTTP proxy via TUN interface, with web control panel. Powered by tun2proxy (Rust).

@@ -1,0 +1,426 @@
+#!/system/bin/sh
+# tun2proxyctl — tun2proxy control CLI for KernelSU module
+# Manages tun2proxy process lifecycle: start, stop, status, restart, logs, auto-start
+set -e
+
+# Path resolution: use env vars from service.sh, or derive from script location
+MODDIR="${TUN2PROXY_MODDIR:-${0%/*/*/*}}"
+CONFIG="${TUN2PROXY_CONFIG:-/data/adb/tun2proxy/config.json}"
+DATA_DIR="${TUN2PROXY_DATA:-/data/adb/tun2proxy}"
+LOG_DIR="$DATA_DIR/logs"
+RUN_DIR="$DATA_DIR/run"
+TUN2PROXY_BIN="$MODDIR/system/bin/tun2proxy"
+
+log()     { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
+log_err() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" >&2; }
+die()     { log_err "$@"; exit 1; }
+
+# ---- JSON helpers (no jq required) ----
+# Extract a string value for a given key from JSON
+json_get_str() {
+    local key="$1" file="${2:-$CONFIG}"
+    [ ! -f "$file" ] && return 1
+    # Match "key": "value" — handles escaped chars simply
+    grep -o "\"${key}\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" "$file" | \
+        head -1 | sed 's/.*:[[:space:]]*"\([^"]*\)".*/\1/'
+}
+
+json_get_bool() {
+    local key="$1" file="${2:-$CONFIG}"
+    [ ! -f "$file" ] && return 1
+    grep -o "\"${key}\"[[:space:]]*:[[:space:]]*\(true\|false\)" "$file" | \
+        head -1 | grep -q 'true'
+}
+
+json_get_num() {
+    local key="$1" file="${2:-$CONFIG}"
+    [ ! -f "$file" ] && return 1
+    grep -o "\"${key}\"[[:space:]]*:[[:space:]]*[0-9.]\+" "$file" | \
+        head -1 | sed 's/.*:[[:space:]]*\([0-9.]*\).*/\1/'
+}
+
+# Get all bypass IPs as newline-separated list
+json_get_bypass() {
+    local file="${1:-$CONFIG}"
+    [ ! -f "$file" ] && return 1
+    # Extract the bypass_ips array: lines between [ and ] containing quoted strings
+    sed -n '/"bypass_ips"/,/\]/p' "$file" | \
+        grep -o '"[^"]*"' | sed 's/"//g'
+}
+
+# ---- cmd: start ----
+cmd_start() {
+    [ ! -f "$TUN2PROXY_BIN" ] && die "tun2proxy binary not found: $TUN2PROXY_BIN"
+    [ ! -f "$CONFIG" ] && die "Config not found: $CONFIG"
+
+    # Stop if already running
+    if cmd_is_running; then
+        log "tun2proxy already running, stopping first..."
+        cmd_stop_internal
+        sleep 1
+    fi
+
+    # Build arguments from config
+    local proxy_url dns_mode tun_name tcp_timeout udp_timeout udpgw_server
+    proxy_url=$(json_get_str "proxy_url")
+    dns_mode=$(json_get_str "dns_mode")
+    tun_name=$(json_get_str "tun_name")
+    tcp_timeout=$(json_get_num "tcp_timeout")
+    udp_timeout=$(json_get_num "udp_timeout")
+    udpgw_server=$(json_get_str "udpgw_server")
+
+    [ -z "$proxy_url" ] && die "proxy_url not set in config"
+    [ -z "$dns_mode" ] && dns_mode="virtual"
+    [ -z "$tun_name" ] && tun_name="tun0"
+    [ -z "$tcp_timeout" ] && tcp_timeout=30
+    [ -z "$udp_timeout" ] && udp_timeout=30
+
+    mkdir -p "$LOG_DIR" "$RUN_DIR" 2>/dev/null
+
+    # Build command
+    set -- "$TUN2PROXY_BIN" \
+        --tun "$tun_name" \
+        --proxy "$proxy_url" \
+        --dns "$dns_mode" \
+        --tcp-timeout "$tcp_timeout" \
+        --udp-timeout "$udp_timeout"
+
+    # Add UDP gateway if configured
+    if [ -n "$udpgw_server" ]; then
+        set -- "$@" --udpgw-server "$udpgw_server"
+    fi
+
+    # Add bypass IPs
+    json_get_bypass | while IFS= read -r ip; do
+        [ -n "$ip" ] && set -- "$@" --bypass "$ip"
+    done
+
+    log "Starting tun2proxy: $*"
+    local logfile="$LOG_DIR/tun2proxy.log"
+
+    # Ensure TUN device permissions if needed
+    if [ -c /dev/tun ] && [ ! -w /dev/tun ]; then
+        chmod 666 /dev/tun 2>/dev/null || true
+    fi
+
+    nohup "$@" >> "$logfile" 2>&1 &
+    local pid=$!
+    echo "$pid" > "$RUN_DIR/tun2proxy.pid"
+    log "tun2proxy started, pid=$pid"
+
+    # Verify it's alive after a short wait
+    sleep 2
+    if [ -d "/proc/$pid" ]; then
+        log "tun2proxy running OK"
+    else
+        log_err "tun2proxy may have exited quickly — check $logfile"
+    fi
+}
+
+# ---- internal stop (no logging) ----
+cmd_stop_internal() {
+    if [ -f "$RUN_DIR/tun2proxy.pid" ]; then
+        local pid
+        pid=$(cat "$RUN_DIR/tun2proxy.pid")
+        if [ -d "/proc/$pid" ]; then
+            kill "$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
+        fi
+        rm -f "$RUN_DIR/tun2proxy.pid"
+    fi
+}
+
+# ---- cmd: stop ----
+cmd_stop() {
+    if [ -f "$RUN_DIR/tun2proxy.pid" ]; then
+        local pid
+        pid=$(cat "$RUN_DIR/tun2proxy.pid")
+        if [ -d "/proc/$pid" ]; then
+            log "Stopping tun2proxy (pid=$pid)"
+            kill "$pid" 2>/dev/null
+            sleep 1
+            if [ -d "/proc/$pid" ]; then
+                log "Force killing tun2proxy (pid=$pid)"
+                kill -9 "$pid" 2>/dev/null || true
+            fi
+        fi
+        rm -f "$RUN_DIR/tun2proxy.pid"
+        log "tun2proxy stopped"
+    else
+        log "tun2proxy not running (no PID file)"
+    fi
+}
+
+# ---- cmd: restart ----
+cmd_restart() {
+    log "Restarting tun2proxy..."
+    cmd_stop
+    sleep 1
+    cmd_start
+}
+
+# ---- cmd: is_running ----
+cmd_is_running() {
+    if [ -f "$RUN_DIR/tun2proxy.pid" ]; then
+        local pid
+        pid=$(cat "$RUN_DIR/tun2proxy.pid")
+        [ -d "/proc/$pid" ] && return 0
+    fi
+    return 1
+}
+
+# ---- cmd: status ----
+cmd_status() {
+    echo "========== Tun2Proxy Status =========="
+    echo ""
+
+    echo "--- tun2proxy ---"
+    if [ -f "$RUN_DIR/tun2proxy.pid" ]; then
+        local pid
+        pid=$(cat "$RUN_DIR/tun2proxy.pid")
+        if [ -d "/proc/$pid" ]; then
+            local uptime_info=""
+            # Get process uptime roughly
+            if [ -f "/proc/$pid/stat" ]; then
+                local start_ticks
+                start_ticks=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null)
+                if [ -n "$start_ticks" ]; then
+                    local hz=$(getconf CLK_TCK 2>/dev/null || echo 100)
+                    local uptime_sec
+                    uptime_sec=$(awk '{print int($1)}' /proc/uptime 2>/dev/null)
+                    if [ -n "$uptime_sec" ]; then
+                        local runtime=$(( uptime_sec - start_ticks / hz ))
+                        local mins=$(( runtime / 60 ))
+                        local secs=$(( runtime % 60 ))
+                        uptime_info=" (up ${mins}m ${secs}s)"
+                    fi
+                fi
+            fi
+            echo "  State: RUNNING (pid=$pid)$uptime_info"
+        else
+            echo "  State: CRASHED (stale pid=$pid)"
+        fi
+    else
+        echo "  State: STOPPED"
+    fi
+    echo ""
+
+    echo "--- Configuration ---"
+    if [ -f "$CONFIG" ]; then
+        echo "  Proxy URL:    $(json_get_str proxy_url || echo 'not set')"
+        echo "  DNS Mode:     $(json_get_str dns_mode || echo 'virtual')"
+        echo "  TUN Name:     $(json_get_str tun_name || echo 'tun0')"
+        echo "  TCP Timeout:  $(json_get_num tcp_timeout || echo '30')s"
+        echo "  UDP Timeout:  $(json_get_num udp_timeout || echo '30')s"
+        echo "  UDP Gateway:  $(json_get_str udpgw_server || echo 'disabled')"
+        local enabled="disabled"
+        json_get_bool "enabled" && enabled="enabled"
+        echo "  Auto-start:   $enabled"
+
+        echo "  Bypass IPs:"
+        local has_bypass=false
+        json_get_bypass | while IFS= read -r ip; do
+            [ -n "$ip" ] && echo "    - $ip" && has_bypass=true
+        done
+        if ! $has_bypass 2>/dev/null; then
+            echo "    (none)"
+        fi
+    else
+        echo "  Config file not found: $CONFIG"
+    fi
+    echo ""
+
+    echo "--- Web Backend ---"
+    if pgrep -f tun2proxy-web >/dev/null 2>&1; then
+        echo "  tun2proxy-web: RUNNING (pid=$(pgrep -f tun2proxy-web | head -1))"
+    else
+        echo "  tun2proxy-web: NOT RUNNING"
+    fi
+    echo ""
+
+    echo "--- System ---"
+    echo "  TUN device:"
+    if [ -c /dev/tun ]; then
+        echo "    /dev/tun exists"
+    elif [ -c /dev/net/tun ]; then
+        echo "    /dev/net/tun exists"
+    else
+        echo "    NOT FOUND — kernel may lack CONFIG_TUN"
+    fi
+    if [ -f /proc/net/fib_trie ]; then
+        echo "  Routes configured: $(ip route show table all 2>/dev/null | grep -c 'tun' || echo '0') tun-related routes"
+    fi
+    echo ""
+}
+
+# ---- cmd: config ----
+cmd_config() {
+    if [ -f "$CONFIG" ]; then
+        cat "$CONFIG"
+    else
+        echo "{}"
+    fi
+}
+
+# ---- cmd: logs ----
+cmd_logs() {
+    local lines="${1:-100}"
+    local logfile="$LOG_DIR/tun2proxy.log"
+    if [ -f "$logfile" ]; then
+        tail -n "$lines" "$logfile"
+    else
+        echo "(no log file at $logfile)"
+    fi
+}
+
+# ---- cmd: auto-start (called by service.sh) ----
+cmd_auto_start() {
+    log "auto-start: checking config..."
+
+    if [ ! -f "$CONFIG" ]; then
+        log "auto-start: no config file, copying default"
+        if [ -f "$MODDIR/config/config.json" ]; then
+            mkdir -p "$(dirname "$CONFIG")" 2>/dev/null
+            cp "$MODDIR/config/config.json" "$CONFIG"
+        else
+            log "auto-start: no default config, skipping"
+            return 0
+        fi
+    fi
+
+    if json_get_bool "enabled"; then
+        log "auto-start: enabled=true, launching tun2proxy"
+        cmd_start &
+    else
+        log "auto-start: enabled=false, skipping"
+    fi
+}
+
+# ---- cmd: check ----
+cmd_check() {
+    echo "========== Tun2Proxy Environment Check =========="
+    echo ""
+
+    echo "[1] Kernel version:"
+    uname -a
+    echo ""
+
+    echo "[2] TUN device support:"
+    if [ -c /dev/tun ]; then
+        echo "  /dev/tun: YES"
+    elif [ -c /dev/net/tun ]; then
+        echo "  /dev/net/tun: YES"
+    else
+        echo "  /dev/tun: NO — kernel may need CONFIG_TUN=m or =y"
+        echo "  Checking kernel config..."
+        if [ -f /proc/config.gz ]; then
+            zcat /proc/config.gz 2>/dev/null | grep "CONFIG_TUN" || echo "  CONFIG_TUN not found in /proc/config.gz"
+        else
+            echo "  /proc/config.gz not available"
+        fi
+    fi
+    echo ""
+
+    echo "[3] Network capabilities:"
+    echo "  iptables: $(command -v iptables >/dev/null 2>&1 && echo 'YES' || echo 'NO')"
+    echo "  ip:       $(command -v ip >/dev/null 2>&1 && echo 'YES' || echo 'NO')"
+    echo "  route:    $(command -v route >/dev/null 2>&1 && echo 'YES' || echo 'NO')"
+    echo ""
+
+    echo "[4] tun2proxy binary:"
+    if [ -f "$TUN2PROXY_BIN" ]; then
+        echo "  Found: $TUN2PROXY_BIN"
+        chmod +x "$TUN2PROXY_BIN" 2>/dev/null || true
+        "$TUN2PROXY_BIN" --version 2>/dev/null || echo "  (version check failed)"
+    else
+        echo "  NOT FOUND: $TUN2PROXY_BIN"
+    fi
+    echo ""
+
+    echo "[5] SELinux status:"
+    getenforce 2>/dev/null || echo "  getenforce not found"
+    echo ""
+
+    echo "[6] Current network state:"
+    echo "  Interfaces:"
+    ip link show 2>/dev/null | grep -E '^[0-9]+:' | sed 's/^/    /' || echo "    (ip command not available)"
+    echo ""
+    echo "  Default route:"
+    ip route show default 2>/dev/null | sed 's/^/    /' || echo "    (none)"
+    echo ""
+
+    echo "========== Check Complete =========="
+}
+
+# ---- cmd: web-status (JSON output for backend) ----
+cmd_web_status() {
+    local running="false"
+    local pid="0"
+    local crashed="false"
+
+    if [ -f "$RUN_DIR/tun2proxy.pid" ]; then
+        pid=$(cat "$RUN_DIR/tun2proxy.pid")
+        if [ -d "/proc/$pid" ]; then
+            running="true"
+        else
+            crashed="true"
+        fi
+    fi
+
+    # Output simple JSON
+    printf '{"running":%s,"pid":%s,"crashed":%s}\n' "$running" "$pid" "$crashed"
+}
+
+# ---- main dispatch ----
+case "${1:-}" in
+    start)
+        cmd_start
+        ;;
+    stop)
+        cmd_stop
+        ;;
+    restart)
+        cmd_restart
+        ;;
+    status)
+        cmd_status
+        ;;
+    web-status)
+        cmd_web_status
+        ;;
+    is-running)
+        cmd_is_running && exit 0 || exit 1
+        ;;
+    config)
+        cmd_config
+        ;;
+    logs)
+        shift
+        cmd_logs "$@"
+        ;;
+    auto-start)
+        cmd_auto_start
+        ;;
+    check)
+        cmd_check
+        ;;
+    help|--help|-h)
+        echo "Usage: tun2proxyctl <command> [args]"
+        echo ""
+        echo "Commands:"
+        echo "  start         Start tun2proxy with current config"
+        echo "  stop          Stop tun2proxy"
+        echo "  restart       Restart tun2proxy"
+        echo "  status        Show full status (human-readable)"
+        echo "  web-status    Show status as JSON (for web backend)"
+        echo "  is-running    Exit 0 if running, 1 if not"
+        echo "  config        Dump current config JSON"
+        echo "  logs [N]      Tail last N lines of tun2proxy log"
+        echo "  auto-start    Start if enabled=true in config (service.sh)"
+        echo "  check         Check environment and compatibility"
+        echo "  help          Show this help"
+        ;;
+    *)
+        echo "Usage: tun2proxyctl <command> [args]"
+        echo "Try 'tun2proxyctl help' for available commands."
+        ;;
+esac

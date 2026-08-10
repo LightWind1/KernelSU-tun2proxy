@@ -1,0 +1,16 @@
+# Minimal SELinux policy for tun2proxy TUN interface operations
+# Extend as needed based on denial logs (dmesg | grep avc)
+
+# Capabilities needed for TUN interface creation and raw socket operations
+allow su self:capability { net_admin net_raw sys_admin };
+allow su self:capability2 { net_admin net_raw };
+
+# Netlink socket for route/interface configuration
+allow su self:netlink_socket { create bind read write };
+
+# Access to /dev/tun (or /dev/net/tun) device node
+allow su device:chr_file { read write open ioctl };
+
+# Network access
+allow su self:tcp_socket { create bind connect read write };
+allow su self:udp_socket { create bind connect read write };

@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Tun2Proxy</title>
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--soft:#1f252d;--border:#30363d;--text:#c9d1d9;--muted:#8b949e;--green:#3fb950;--red:#f85149;--yellow:#d29922;--blue:#58a6ff;--purple:#bc8cff;--orange:#d1864b}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:12px}
+h1{font-size:18px;font-weight:650}.subtitle{color:var(--muted);font-size:12px;margin:2px 0 12px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field span{font-size:11px;color:var(--muted)}
+input,select{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:7px 8px;font-size:12px;min-width:0}
+input[type=checkbox]{width:16px;height:16px}
+.chip{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:500}
+.ok{background:#1a3a2a;color:var(--green)}.warn{background:#3a2a1a;color:var(--yellow)}.err{background:#3a1a1a;color:var(--red)}.unknown{background:var(--border);color:var(--muted)}
+.btn{padding:6px 10px;border-radius:5px;border:none;font-size:12px;font-weight:550;cursor:pointer;color:#fff}
+.btn:active{opacity:.72}.btn:disabled{opacity:.35}
+.btn-start{background:#238636}.btn-stop{background:#da3633}.btn-restart{background:#d29922;color:#0d1117}.btn-save{background:#1f6feb}.btn-secondary{background:#30363d;color:var(--text)}.btn-check{background:#1f6feb}
+.log-box,.check-out{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:10px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;line-height:1.35;color:var(--muted)}
+.log-box{height:260px}.check-out{max-height:360px}
+.tab-bar{display:flex;gap:4px;margin-bottom:10px;overflow-x:auto}
+.tab{padding:6px 12px;border-radius:5px;border:1px solid var(--border);font-size:12px;cursor:pointer;background:var(--panel);color:var(--muted);white-space:nowrap}
+.tab.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+.status-bar{display:flex;align-items:center;justify-content:space-between;padding:12px;background:var(--panel);border:1px solid var(--border);border-radius:8px;margin-bottom:10px}
+.status-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px}
+.status-dot.running{background:var(--green);box-shadow:0 0 6px var(--green)}
+.status-dot.stopped{background:var(--border)}
+.status-dot.crashed{background:var(--red);box-shadow:0 0 6px var(--red)}
+.status-left{display:flex;align-items:center;gap:8px}
+.status-label{font-size:14px;font-weight:600}.status-pid{font-size:11px;color:var(--muted)}.status-uptime{font-size:11px;color:var(--muted)}
+.status-actions{display:flex;gap:4px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+.stat{padding:10px;border-radius:8px;background:var(--panel);border:1px solid var(--border)}
+.stat-l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px}.stat-v{font-size:13px;font-weight:600;margin-top:2px}
+.toast{position:fixed;left:12px;right:12px;bottom:12px;background:var(--soft);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:12px;color:var(--text);display:none;z-index:5}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:s .6s linear infinite}@keyframes s{to{transform:rotate(360deg)}}
+
+/* Bypass list */
+.bypass-list{margin-top:6px}.bypass-item{display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border)}.bypass-item input{flex:1;font-size:11px}
+.bypass-item .btn{padding:3px 8px;font-size:11px}
+
+/* Password field toggle */
+.pw-wrapper{position:relative}.pw-wrapper input{padding-right:36px;width:100%}.pw-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:2px 4px}
+
+@media(max-width:560px){.grid{grid-template-columns:1fr}.status-bar{flex-direction:column;gap:8px}.status-actions{width:100%;justify-content:stretch}.status-actions .btn{flex:1}}
+</style>
+</head>
+<body>
+<h1>Tun2Proxy</h1>
+<div class="subtitle">KernelSU Module — Route traffic through SOCKS5/HTTP proxy</div>
+
+<!-- Status Bar -->
+<div class="status-bar">
+  <div class="status-left">
+    <span class="status-dot stopped" id="status-dot"></span>
+    <div>
+      <div class="status-label" id="status-label">STOPPED</div>
+      <div class="status-pid" id="status-pid"></div>
+      <div class="status-uptime" id="status-uptime"></div>
+    </div>
+  </div>
+  <div class="status-actions">
+    <button class="btn btn-start" id="btn-start" onclick="startProxy()">Start</button>
+    <button class="btn btn-stop" id="btn-stop" onclick="stopProxy()" disabled>Stop</button>
+    <button class="btn btn-restart" id="btn-restart" onclick="restartProxy()" disabled>Restart</button>
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="stats">
+  <div class="stat"><div class="stat-l">TUN Device</div><div class="stat-v" id="stat-tun">-</div></div>
+  <div class="stat"><div class="stat-l">Proxy</div><div class="stat-v" id="stat-proxy">-</div></div>
+  <div class="stat"><div class="stat-l">DNS Mode</div><div class="stat-v" id="stat-dns">-</div></div>
+  <div class="stat"><div class="stat-l">Auto Start</div><div class="stat-v" id="stat-autostart">-</div></div>
+</div>
+
+<!-- Tabs -->
+<div class="tab-bar">
+  <button class="tab on" data-tab="settings" onclick="switchTab('settings')">Settings</button>
+  <button class="tab" data-tab="logs" onclick="switchTab('logs')">Logs</button>
+  <button class="tab" data-tab="diagnose" onclick="switchTab('diagnose')">Diagnose</button>
+</div>
+
+<!-- Settings Tab -->
+<div id="tab-settings">
+  <div class="card">
+    <div style="font-weight:600;margin-bottom:10px">Proxy Configuration</div>
+    <div class="grid">
+      <div class="field">
+        <span>Protocol</span>
+        <select id="cfg-proto" onchange="onConfigChange()">
+          <option value="socks5">SOCKS5</option>
+          <option value="socks5h">SOCKS5h (proxy DNS)</option>
+          <option value="http">HTTP CONNECT</option>
+        </select>
+      </div>
+      <div class="field">
+        <span>Port</span>
+        <input id="cfg-port" type="number" inputmode="numeric" placeholder="1080" onchange="onConfigChange()">
+      </div>
+      <div class="field" style="grid-column:1/-1">
+        <span>Host / IP Address</span>
+        <input id="cfg-host" placeholder="127.0.0.1" onchange="onConfigChange()">
+      </div>
+      <div class="field">
+        <span>Username (optional)</span>
+        <input id="cfg-user" placeholder="username" autocomplete="off" onchange="onConfigChange()">
+      </div>
+      <div class="field">
+        <span>Password (optional)</span>
+        <div class="pw-wrapper">
+          <input id="cfg-pass" type="password" placeholder="password" autocomplete="off" onchange="onConfigChange()">
+          <button class="pw-toggle" onclick="togglePassword()" tabindex="-1">&#x1f441;</button>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:8px;font-size:10px;color:var(--muted)">Proxy URL: <span id="proxy-url-preview" style="color:var(--blue);font-family:monospace">socks5://127.0.0.1:1080</span></div>
+  </div>
+
+  <div class="card">
+    <div style="font-weight:600;margin-bottom:10px">DNS &amp; Network</div>
+    <div class="grid">
+      <div class="field">
+        <span>DNS Mode</span>
+        <select id="cfg-dns" onchange="onConfigChange()">
+          <option value="virtual">Virtual (recommended)</option>
+          <option value="over-tcp">DNS-over-TCP</option>
+          <option value="direct">Direct</option>
+        </select>
+      </div>
+      <div class="field">
+        <span>TUN Interface Name</span>
+        <input id="cfg-tun" value="tun0" onchange="onConfigChange()">
+      </div>
+      <div class="field">
+        <span>TCP Timeout (seconds)</span>
+        <input id="cfg-tcp-timeout" type="number" inputmode="numeric" value="30" onchange="onConfigChange()">
+      </div>
+      <div class="field">
+        <span>UDP Timeout (seconds)</span>
+        <input id="cfg-udp-timeout" type="number" inputmode="numeric" value="30" onchange="onConfigChange()">
+      </div>
+      <div class="field" style="grid-column:1/-1">
+        <span>UDP Gateway Server (optional, e.g. 127.0.0.1:7300)</span>
+        <input id="cfg-udpgw" placeholder="leave empty to disable UDP gateway" onchange="onConfigChange()">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span style="font-weight:600">Bypass IPs / CIDRs</span>
+      <button class="btn btn-secondary" onclick="addBypass()">+ Add</button>
+    </div>
+    <div class="bypass-list" id="bypass-list"></div>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px">Traffic to these addresses will NOT go through the proxy</div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <label class="row"><input id="cfg-autostart" type="checkbox" onchange="onConfigChange()"> <span>Auto-start on boot</span></label>
+      <button class="btn btn-save" onclick="saveConfig()">Save Configuration</button>
+    </div>
+  </div>
+</div>
+
+<!-- Logs Tab -->
+<div id="tab-logs" style="display:none">
+  <div class="row" style="margin-bottom:8px">
+    <button class="btn btn-secondary" onclick="loadLogs()">Refresh</button>
+    <select id="log-lines" onchange="loadLogs()">
+      <option value="50">50 lines</option>
+      <option value="100">100 lines</option>
+      <option value="200" selected>200 lines</option>
+      <option value="500">500 lines</option>
+    </select>
+  </div>
+  <div class="log-box" id="log-box">Loading...</div>
+</div>
+
+<!-- Diagnose Tab -->
+<div id="tab-diagnose" style="display:none">
+  <button class="btn btn-check" id="check-btn" onclick="runCheck()">Run Diagnostics</button>
+  <span class="spin" id="check-spin" style="display:none;margin-left:8px"></span>
+  <div class="check-out" id="check-out" style="margin-top:8px">Click "Run Diagnostics" to check the environment...</div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ========== State ==========
+const API = 'http://127.0.0.1:8080';
+let config = {};
+let status = {running: false, pid: 0, crashed: false, uptime: ''};
+let passwordVisible = false;
+
+// ========== Helpers ==========
+function $(id){return document.getElementById(id)}
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function toast(msg){const t=$('toast');t.textContent=msg;t.style.display='block';setTimeout(()=>t.style.display='none',3000)}
+
+// ========== API Calls ==========
+async function loadStatus(){
+  try{
+    const r = await fetch(API+'/api/status');
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d = await r.json();
+    status = d;
+    config = d.config || {};
+    renderStatus();
+    renderConfig();
+    renderStats();
+  }catch(e){
+    // Server might not be running
+    $('status-label').textContent = 'DISCONNECTED';
+    $('status-pid').textContent = '';
+    $('status-uptime').textContent = 'Web backend unreachable';
+    $('status-dot').className = 'status-dot crashed';
+    updateButtons(false, false);
+  }
+}
+
+async function saveConfig(){
+  // Read from form
+  const cfg = readConfigFromForm();
+  try{
+    const r = await fetch(API+'/api/config', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(cfg)
+    });
+    const d = await r.json();
+    if(d.error){
+      toast('Save failed: '+d.error);
+      return;
+    }
+    config = cfg;
+    toast('Configuration saved');
+    renderConfig();
+    renderStats();
+  }catch(e){
+    toast('Save failed: '+e.message);
+  }
+}
+
+async function startProxy(){
+  // Save current config first
+  const cfg = readConfigFromForm();
+  try{
+    const r = await fetch(API+'/api/start', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(cfg)
+    });
+    const d = await r.json();
+    if(!d.ok){
+      toast('Start failed: '+(d.error||d.output||'unknown error'));
+      return;
+    }
+    toast('tun2proxy started');
+    loadStatus();
+  }catch(e){
+    toast('Start failed: '+e.message);
+  }
+}
+
+async function stopProxy(){
+  try{
+    const r = await fetch(API+'/api/stop', {method:'POST'});
+    const d = await r.json();
+    if(!d.ok){
+      toast('Stop failed: '+(d.error||''));
+      return;
+    }
+    toast('tun2proxy stopped');
+    loadStatus();
+  }catch(e){
+    toast('Stop failed: '+e.message);
+  }
+}
+
+async function restartProxy(){
+  try{
+    const r = await fetch(API+'/api/restart', {method:'POST'});
+    const d = await r.json();
+    if(!d.ok){
+      toast('Restart failed: '+(d.error||''));
+      return;
+    }
+    toast('tun2proxy restarted');
+    loadStatus();
+  }catch(e){
+    toast('Restart failed: '+e.message);
+  }
+}
+
+async function loadLogs(){
+  const lines = $('log-lines').value || '200';
+  try{
+    const r = await fetch(API+'/api/logs?lines='+lines);
+    const text = await r.text();
+    $('log-box').textContent = text || '(empty log)';
+    $('log-box').scrollTop = $('log-box').scrollHeight;
+  }catch(e){
+    $('log-box').textContent = 'Failed to load logs: '+e.message;
+  }
+}
+
+async function runCheck(){
+  const btn=$('check-btn');const sp=$('check-spin');
+  btn.disabled=true;sp.style.display='inline-block';
+  $('check-out').textContent = 'Running diagnostics...';
+  try{
+    const r = await fetch(API+'/api/check');
+    $('check-out').textContent = await r.text();
+  }catch(e){
+    $('check-out').textContent = 'Diagnostics failed: '+e.message;
+  }
+  btn.disabled=false;sp.style.display='none';
+}
+
+// ========== Config Form ==========
+function readConfigFromForm(){
+  const proto = $('cfg-proto').value;
+  const host = $('cfg-host').value.trim() || '127.0.0.1';
+  const port = $('cfg-port').value || '1080';
+  const user = $('cfg-user').value.trim();
+  const pass = $('cfg-pass').value;
+
+  // Build proxy URL
+  let proxyURL = proto+'://';
+  if(user){
+    proxyURL += encodeURIComponent(user);
+    if(pass) proxyURL += ':'+encodeURIComponent(pass);
+    proxyURL += '@';
+  }
+  proxyURL += host+':'+port;
+
+  // Collect bypass IPs
+  const bypassIPs = [];
+  document.querySelectorAll('.bypass-ip').forEach(inp => {
+    const v = inp.value.trim();
+    if(v) bypassIPs.push(v);
+  });
+
+  return {
+    version: '1.0',
+    enabled: $('cfg-autostart').checked,
+    tun_name: $('cfg-tun').value.trim() || 'tun0',
+    proxy_url: proxyURL,
+    dns_mode: $('cfg-dns').value,
+    bypass_ips: bypassIPs,
+    tcp_timeout: parseInt($('cfg-tcp-timeout').value)||30,
+    udp_timeout: parseInt($('cfg-udp-timeout').value)||30,
+    udpgw_server: $('cfg-udpgw').value.trim()
+  };
+}
+
+function renderConfig(){
+  if(!config || !config.proxy_url) return;
+  // Populate form fields from loaded config
+  try{
+    // Parse proxy_url
+    const urlMatch = config.proxy_url.match(/^(socks5h?|http):\/\/(?:([^:@]+)(?::([^@]+))?@)?([^:]+):(\d+)$/);
+    if(urlMatch){
+      $('cfg-proto').value = urlMatch[1];
+      $('cfg-user').value = urlMatch[2] ? decodeURIComponent(urlMatch[2]) : '';
+      $('cfg-pass').value = urlMatch[3] ? decodeURIComponent(urlMatch[3]) : '';
+      $('cfg-host').value = urlMatch[4];
+      $('cfg-port').value = urlMatch[5];
+    }
+  }catch(e){}
+  $('cfg-dns').value = config.dns_mode || 'virtual';
+  $('cfg-tun').value = config.tun_name || 'tun0';
+  $('cfg-tcp-timeout').value = config.tcp_timeout || 30;
+  $('cfg-udp-timeout').value = config.udp_timeout || 30;
+  $('cfg-udpgw').value = config.udpgw_server || '';
+  $('cfg-autostart').checked = config.enabled || false;
+
+  // Render bypass list
+  renderBypassList(config.bypass_ips || []);
+  updateProxyPreview();
+}
+
+function onConfigChange(){
+  updateProxyPreview();
+}
+
+function updateProxyPreview(){
+  const cfg = readConfigFromForm();
+  $('proxy-url-preview').textContent = cfg.proxy_url;
+}
+
+function renderBypassList(ips){
+  const list = $('bypass-list');
+  if(!ips || ips.length === 0){
+    list.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:4px 0">No bypass rules configured</div>';
+    return;
+  }
+  list.innerHTML = ips.map((ip,i) =>
+    '<div class="bypass-item">'+
+    '<input class="bypass-ip" value="'+esc(ip)+'" onchange="onConfigChange()">'+
+    '<button class="btn btn-stop" onclick="removeBypass('+i+')" style="padding:3px 8px;font-size:11px">Del</button>'+
+    '</div>'
+  ).join('');
+}
+
+function addBypass(){
+  const ips = [];
+  document.querySelectorAll('.bypass-ip').forEach(inp => {
+    const v = inp.value.trim();
+    if(v) ips.push(v);
+  });
+  ips.push('');
+  renderBypassList(ips);
+  // Focus the new input
+  const inputs = document.querySelectorAll('.bypass-ip');
+  if(inputs.length) inputs[inputs.length-1].focus();
+}
+
+function removeBypass(idx){
+  const ips = [];
+  document.querySelectorAll('.bypass-ip').forEach((inp,i) => {
+    if(i !== idx){
+      const v = inp.value.trim();
+      if(v) ips.push(v);
+    }
+  });
+  renderBypassList(ips);
+  onConfigChange();
+}
+
+function togglePassword(){
+  const inp = $('cfg-pass');
+  passwordVisible = !passwordVisible;
+  inp.type = passwordVisible ? 'text' : 'password';
+}
+
+// ========== Status Rendering ==========
+function renderStatus(){
+  const dot = $('status-dot');
+  const label = $('status-label');
+  const pidEl = $('status-pid');
+  const uptimeEl = $('status-uptime');
+
+  if(status.crashed){
+    dot.className = 'status-dot crashed';
+    label.textContent = 'CRASHED';
+    pidEl.textContent = 'stale pid='+status.pid;
+    uptimeEl.textContent = '';
+    updateButtons(false, true);
+  }else if(status.running){
+    dot.className = 'status-dot running';
+    label.textContent = 'RUNNING';
+    pidEl.textContent = 'pid='+status.pid;
+    uptimeEl.textContent = status.uptime ? 'up '+status.uptime : '';
+    updateButtons(true, true);
+  }else{
+    dot.className = 'status-dot stopped';
+    label.textContent = 'STOPPED';
+    pidEl.textContent = '';
+    uptimeEl.textContent = '';
+    updateButtons(false, false);
+  }
+}
+
+function renderStats(){
+  $('stat-tun').textContent = status.tun_available ? 'Available' : 'Not Found';
+  $('stat-tun').style.color = status.tun_available ? 'var(--green)' : 'var(--red)';
+  $('stat-proxy').textContent = (config.proxy_url || '-').split('@').pop() || '-';
+  $('stat-dns').textContent = config.dns_mode || '-';
+  $('stat-autostart').textContent = config.enabled ? 'ON' : 'OFF';
+  $('stat-autostart').style.color = config.enabled ? 'var(--green)' : 'var(--muted)';
+}
+
+function updateButtons(running, hasProcess){
+  $('btn-start').disabled = running;
+  $('btn-stop').disabled = !running;
+  $('btn-restart').disabled = !hasProcess;
+}
+
+// ========== Tab Switching ==========
+function switchTab(name){
+  ['settings','logs','diagnose'].forEach(t => {
+    $('tab-'+t).style.display = t===name ? 'block' : 'none';
+  });
+  document.querySelectorAll('.tab').forEach(b => {
+    b.classList.toggle('on', b.dataset.tab === name);
+  });
+  if(name === 'logs') loadLogs();
+}
+
+// ========== Init ==========
+loadStatus();
+setInterval(loadStatus, 5000);
+</script>
+</body>
+</html>

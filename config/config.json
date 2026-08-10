@@ -1,0 +1,11 @@
+{
+  "version": "1.0",
+  "enabled": false,
+  "tun_name": "tun0",
+  "proxy_url": "socks5://127.0.0.1:1080",
+  "dns_mode": "virtual",
+  "bypass_ips": [],
+  "tcp_timeout": 30,
+  "udp_timeout": 30,
+  "udpgw_server": ""
+}
