@@ -9,18 +9,18 @@ $excludeDirs = @(
     ".git",
     ".claude",
     "cmd",
-    "tun2proxy",
     "META-INF",
     "_pkg_stage"
 )
 $excludeFiles = @(
     "pack.sh",
     "pack.ps1",
+    "download.sh",
+    "download.ps1",
     "go.mod",
     "go.sum",
     "CLAUDE.md",
-    ".gitignore",
-    ".gitmodules"
+    ".gitignore"
 )
 
 Write-Host "=== Packing Tun2Proxy for Android $version ==="

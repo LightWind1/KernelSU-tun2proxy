@@ -16,7 +16,7 @@ tun2proxyctl (system/bin/tun2proxyctl)    →  Shell CLI for process management
 
 | Component | Path | Purpose |
 |---|---|---|
-| tun2proxy | `tun2proxy/` (git submodule) | Rust TUN proxy engine — source only, cross-compile for aarch64 |
+| tun2proxy | `system/bin/tun2proxy` | Rust TUN proxy engine — downloaded from GitHub Releases (prebuilt ARM64 binary) |
 | tun2proxy-web | `cmd/tun2proxy-web/main.go` | Go HTTP API server — manages tun2proxy lifecycle, serves UI |
 | tun2proxyctl | `system/bin/tun2proxyctl` | Shell CLI for start/stop/status/auto-start |
 | Web UI | `webroot/index.html` | Single-page management interface (dark theme) |
@@ -77,10 +77,24 @@ All endpoints are on `http://<phone-ip>:8080` with CORS enabled.
 - **Rust** with `aarch64-linux-android` target for tun2proxy
 - **Android NDK** for cross-compiling Rust to Android
 
-### Build tun2proxy (Rust → ARM64)
+### Download tun2proxy (from GitHub Releases)
+
+The easiest way — downloads the prebuilt ARM64 binary:
 
 ```bash
-# Install Android target
+# Windows PowerShell
+.\download.ps1
+
+# Linux/macOS/Git Bash
+bash download.sh
+```
+
+This fetches the latest release from https://github.com/tun2proxy/tun2proxy/releases
+and extracts the aarch64 Linux binary to `system/bin/tun2proxy`.
+
+### Build tun2proxy from source (alternative)
+
+If you prefer to compile from source:
 rustup target add aarch64-linux-android
 
 # Set up NDK linker (adjust NDK path)
@@ -139,18 +153,22 @@ su -c tun2proxyctl logs 100    # View last 100 log lines
 
 ## Updating tun2proxy
 
-The tun2proxy source is a git submodule at `tun2proxy/`. To update:
+To update the tun2proxy binary to a newer version:
 
 ```bash
-cd tun2proxy
-git fetch
-git checkout <new-version-tag>
-cd ..
-git add tun2proxy
-git commit -m "Update tun2proxy to <version>"
+# Auto-download latest release
+.\download.ps1  # or: bash download.sh
+
+# Or specify a version
+.\download.ps1 -Version v0.8.2
 ```
 
-Then rebuild the binary and repackage.
+Then rebuild the Go backend if needed, and repackage:
+
+```bash
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o system/bin/tun2proxy-web ./cmd/tun2proxy-web/
+.\pack.ps1
+```
 
 ## SELinux
 

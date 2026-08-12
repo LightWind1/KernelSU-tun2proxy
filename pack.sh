@@ -2,7 +2,7 @@
 # pack.sh — Package the module into a flashable zip for KernelSU
 # Works on Linux, macOS, and Windows (Git Bash / MSYS2 with zip installed)
 #
-# NOTE: tun2proxy/ (Rust source) and cmd/ (Go source) are intentionally excluded.
+# NOTE: cmd/ (Go source) is intentionally excluded.
 # Only runtime assets go into the module zip.
 set -e
 
@@ -16,17 +16,17 @@ echo "Module dir: $MODULE_DIR"
 cd "$MODULE_DIR"
 rm -f "$OUTPUT"
 
-# Pack all module files, excluding source code and build artifacts
+# Pack all module files, excluding source code and build tools
 zip -r "$OUTPUT" . \
     -x ".git/*" ".git" \
        ".claude/*" ".claude" \
        "cmd/*" "cmd" \
-       "tun2proxy/*" "tun2proxy" \
        "META-INF/*" "META-INF" \
        "pack.sh" "pack.ps1" \
+       "download.sh" "download.ps1" \
        "go.mod" "go.sum" \
        "CLAUDE.md" \
-       ".gitignore" ".gitmodules" \
+       ".gitignore" \
        "*.zip"
 
 echo ""
