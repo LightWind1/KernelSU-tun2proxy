@@ -16,7 +16,7 @@ tun2proxyctl (system/bin/tun2proxyctl)    →  Shell CLI for process management
 
 | Component | Path | Purpose |
 |---|---|---|
-| tun2proxy | `system/bin/tun2proxy` | Rust TUN proxy engine — downloaded from GitHub Releases (prebuilt ARM64 binary) |
+| tun2proxy | `system/bin/tun2proxy` | Rust TUN proxy engine — cross-compiled from source (`aarch64-linux-android`) |
 | tun2proxy-web | `cmd/tun2proxy-web/main.go` | Go HTTP API server — manages tun2proxy lifecycle, serves UI |
 | tun2proxyctl | `system/bin/tun2proxyctl` | Shell CLI for start/stop/status/auto-start |
 | Web UI | `webroot/index.html` | Single-page management interface (dark theme) |
@@ -77,36 +77,53 @@ All endpoints are on `http://<phone-ip>:8080` with CORS enabled.
 - **Rust** with `aarch64-linux-android` target for tun2proxy
 - **Android NDK** for cross-compiling Rust to Android
 
-### Download tun2proxy (from GitHub Releases)
+### Build tun2proxy (cross-compile from source)
 
-The easiest way — downloads the prebuilt ARM64 binary:
+> **There is no prebuilt Android CLI binary.** The official
+> [tun2proxy releases](https://github.com/tun2proxy/tun2proxy/releases) only ship
+> glibc/musl Linux builds (`aarch64-unknown-linux-gnu`/`-musl`, which are
+> dynamically linked against glibc and **will not run** on Android's bionic libc)
+> and `tun2proxy-android-libs.zip` (only `libtun2proxy.so`/`.a` + a C header — no
+> CLI). So the `tun2proxy-bin` binary target must be compiled from source against
+> Android.
+
+Use the bundled cross-compile script (clones the source to a temp dir, builds,
+and copies the binary to `system/bin/tun2proxy`):
 
 ```bash
-# Windows PowerShell
-.\download.ps1
+# Linux / macOS / WSL / Git Bash
+ANDROID_NDK=/path/to/android-ndk bash build-tun2proxy.sh
 
-# Linux/macOS/Git Bash
-bash download.sh
+# Windows PowerShell (uses cargo-ndk)
+.\build-tun2proxy.ps1
 ```
 
-This fetches the latest release from https://github.com/tun2proxy/tun2proxy/releases
-and extracts the aarch64 Linux binary to `system/bin/tun2proxy`.
+Pass a specific tag/branch to pin a version (default = latest release tag):
 
-### Build tun2proxy from source (alternative)
+```bash
+ANDROID_NDK=/path/to/android-ndk bash build-tun2proxy.sh v0.8.3
+.\build-tun2proxy.ps1 -Ref v0.8.3
+```
 
-If you prefer to compile from source:
+**Prerequisites:** Rust 1.85+ (with `aarch64-linux-android` target) and the
+Android NDK. The script also sets `-Wl,-z,common-page-size=16384
+-Wl,-z,max-page-size=16384 --cfg ANDROID_PAGE_SIZE_16K` so the binary works on
+Android 15+ devices with 16 KB memory pages.
+
+If you prefer to build manually:
+
+```bash
 rustup target add aarch64-linux-android
-
-# Set up NDK linker (adjust NDK path)
 export ANDROID_NDK=/path/to/android-ndk
-export CC_aarch64_linux_android="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android31-clang"
+export CC_aarch64_linux_android="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang"
 export AR_aarch64_linux_android="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CC_aarch64_linux_android"
+export RUSTFLAGS="-C link-arg=-Wl,-z,common-page-size=16384 -C link-arg=-Wl,-z,max-page-size=16384 --cfg ANDROID_PAGE_SIZE_16K"
 
-# Build from submodule
+git clone --depth 1 https://github.com/tun2proxy/tun2proxy.git
 cd tun2proxy
-cargo build --release --target aarch64-linux-android
-cp target/aarch64-linux-android/release/tun2proxy ../system/bin/tun2proxy
+cargo build --release --target aarch64-linux-android --bin tun2proxy-bin
+cp target/aarch64-linux-android/release/tun2proxy-bin ../system/bin/tun2proxy
 ```
 
 ### Build tun2proxy-web (Go → ARM64)
@@ -129,7 +146,7 @@ bash pack.sh
 # Output: ../tun2proxy-for-KernelSU-v1.0.0.zip
 ```
 
-**Excluded from zip** (build-time only): `.git/`, `.claude/`, `tun2proxy/` (Rust source), `cmd/` (Go source), `META-INF/`, packaging scripts, `CLAUDE.md`, `go.mod`, `go.sum`.
+**Excluded from zip** (build-time only): `.git/`, `.claude/`, `tun2proxy/` (Rust source), `cmd/` (Go source), `META-INF/`, `pack.*`, `build-tun2proxy.*`, `install.*`, `CLAUDE.md`, `go.mod`, `go.sum`.
 
 ## Installation
 
@@ -153,14 +170,16 @@ su -c tun2proxyctl logs 100    # View last 100 log lines
 
 ## Updating tun2proxy
 
-To update the tun2proxy binary to a newer version:
+To update the tun2proxy binary to a newer version, rebuild it from source:
 
 ```bash
-# Auto-download latest release
-.\download.ps1  # or: bash download.sh
+# Latest release tag
+ANDROID_NDK=/path/to/android-ndk bash build-tun2proxy.sh
+# ...or a specific version
+ANDROID_NDK=/path/to/android-ndk bash build-tun2proxy.sh v0.8.3
 
-# Or specify a version
-.\download.ps1 -Version v0.8.2
+# Windows PowerShell
+.\build-tun2proxy.ps1 -Ref v0.8.3
 ```
 
 Then rebuild the Go backend if needed, and repackage:

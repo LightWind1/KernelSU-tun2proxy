@@ -5,6 +5,10 @@
 cmd/tun2proxy-web/go.mod
 cmd/tun2proxy-web/go.sum
 
+# Local tun2proxy source checkout (build-tun2proxy.* clones to a temp dir;
+# this only guards against a manual `git submodule add` / clone)
+tun2proxy/
+
 # Packaging output
 *.zip
 

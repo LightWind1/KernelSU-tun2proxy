@@ -23,7 +23,8 @@ zip -r "$OUTPUT" . \
        "cmd/*" "cmd" \
        "META-INF/*" "META-INF" \
        "pack.sh" "pack.ps1" \
-       "download.sh" "download.ps1" \
+       "build-tun2proxy.sh" "build-tun2proxy.ps1" \
+       "install.sh" "install.ps1" \
        "go.mod" "go.sum" \
        "CLAUDE.md" \
        ".gitignore" \
