@@ -30,6 +30,48 @@ ANDROID_API="${ANDROID_API:-26}"
 info()  { echo "==> $*"; }
 die()   { echo "ERROR: $*" >&2; exit 1; }
 
+# Verify the produced binary is a bionic (Android) aarch64 ELF, and that it is
+# 16KB-page-aligned (Android 15+). This guards against accidentally shipping a
+# glibc Linux binary, which would silently fail on-device.
+verify_android_binary() {
+  local bin="$1"
+  info "Verifying $bin ..."
+
+  # --- Core bionic-vs-glibc checks (portable, no external tools) ---
+  # A glibc binary embeds its interpreter (ld-linux-aarch64.so.1) and libc.so.6
+  # as plain strings; a bionic binary embeds /system/bin/linker64 instead.
+  if grep -aq "ld-linux" "$bin"; then
+    die "glibc interpreter found (ld-linux-*.so.1) — this is a Linux binary, NOT Android-compatible"
+  fi
+  if grep -aq "libc\.so\.6" "$bin"; then
+    die "glibc dependency found (libc.so.6) — NOT Android-compatible"
+  fi
+  if ! grep -aq "linker64" "$bin"; then
+    die "Android bionic linker (/system/bin/linker64) not found — not an Android binary"
+  fi
+
+  # --- Detailed checks via llvm-readelf (from the NDK) or readelf ---
+  local rl=""
+  local candidate="$NDK/toolchains/llvm/prebuilt/$HOST/bin/llvm-readelf"
+  [ -x "$candidate" ] && rl="$candidate"
+  [ -z "$rl" ] && rl="$(command -v readelf 2>/dev/null || true)"
+
+  if [ -n "$rl" ]; then
+    if ! "$rl" -h "$bin" 2>/dev/null | grep -q "AArch64"; then
+      die "not an AArch64 ELF binary"
+    fi
+    # Every LOAD segment's Align must be >= 0x4000 (16KB). 0x1000/0x2000 mean the
+    # 16KB linker flags were dropped — it would crash on 16KB-page Android 15+.
+    if "$rl" -l "$bin" 2>/dev/null | awk '$1=="LOAD"{print $NF}' | grep -qE '^0x(1000|2000)$'; then
+      die "LOAD segment is 4KB/8KB-aligned — missing -Wl,-z,max-page-size=16384 (won't run on Android 15+)"
+    fi
+  else
+    info "  (llvm-readelf not found — skipped machine/alignment checks)"
+  fi
+
+  info "OK: aarch64 bionic ELF, 16KB-page-aligned"
+}
+
 # --- Locate the Android NDK ---
 NDK="${ANDROID_NDK:-${ANDROID_NDK_HOME:-}}"
 if [ -z "$NDK" ]; then
@@ -68,6 +110,7 @@ command -v git    >/dev/null 2>&1 || die "git not found"
 info "NDK:    $NDK"
 info "Host:   $HOST"
 info "API:    $ANDROID_API"
+info "rustc:  $(rustc --version)"
 info "Adding aarch64-linux-android target..."
 rustup target add aarch64-linux-android
 
@@ -100,6 +143,8 @@ info "Cross-compiling tun2proxy-bin (aarch64-linux-android)..."
 mkdir -p "$BIN_DIR"
 cp "$WORK/src/target/aarch64-linux-android/release/tun2proxy-bin" "$OUTPUT"
 chmod +x "$OUTPUT"
+
+verify_android_binary "$OUTPUT"
 
 info "Done: $OUTPUT"
 ls -lh "$OUTPUT" | awk '{print "  size: " $5}'
