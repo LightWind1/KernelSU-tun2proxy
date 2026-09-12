@@ -58,6 +58,8 @@ func init() {
 // ========== Config Schema ==========
 
 type Config struct {
+	RouteMode string `json:"route_mode"`
+	AppPackages []string `json:"app_packages"`
 	Version      string   `json:"version"`
 	Enabled      bool     `json:"enabled"`
 	TunName      string   `json:"tun_name"`
@@ -70,6 +72,7 @@ type Config struct {
 }
 
 var configMu sync.Mutex
+var lifecycleMu sync.Mutex
 
 func loadConfig() (Config, error) {
 	configMu.Lock()
@@ -106,7 +109,7 @@ func saveConfig(cfg Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(configFile, data, 0644)
+ return os.WriteFile(configFile, data, 0600)
 }
 
 // ========== Process Status ==========
@@ -139,6 +142,14 @@ func getProcessStatus() ProcessStatus {
 	if err != nil {
 		ps.Crashed = true
 		ps.PID = pid
+		return ps
+	}
+	cmdline, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+	cmdlineText := strings.ReplaceAll(string(cmdline), "\x00", " ")
+	if err != nil || !strings.Contains(cmdlineText, "tun2proxy --tun-fd") {
+		// A PID file can survive a reboot or a forced stop. It is not evidence
+		// that the current boot crashed, so report a clean STOPPED state.
+		_ = os.Remove(pidFile)
 		return ps
 	}
 
@@ -187,6 +198,8 @@ func runCtl(args ...string) (string, error) {
 		"TUN2PROXY_MODDIR="+modDir,
 		"TUN2PROXY_CONFIG="+configFile,
 		"TUN2PROXY_DATA=/data/adb/tun2proxy",
+		"TUN2PROXY_LOG="+filepath.Join(logDir, "tun2proxy.log"),
+		"TUN2PROXY_RUN_DIR="+runDir,
 	)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -244,6 +257,7 @@ func apiStatus(w http.ResponseWriter, r *http.Request) {
 		"web_running":   webRunning,
 		"config":        cfg,
 		"tun_available": tunAvailable(),
+		"routing": readRoutes(),
 	})
 }
 
@@ -297,11 +311,19 @@ func apiConfigPut(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/start
 func apiStart(w http.ResponseWriter, r *http.Request) {
+	lifecycleMu.Lock()
+	defer lifecycleMu.Unlock()
+
 	// First save config if body is provided
 	if r.Body != nil && r.ContentLength > 0 {
 		var cfg Config
-		if err := json.NewDecoder(r.Body).Decode(&cfg); err == nil && cfg.ProxyURL != "" {
-			saveConfig(cfg)
+		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil || cfg.ProxyURL == "" {
+			writeError(w, 400, "Invalid proxy configuration")
+			return
+		}
+		if err := saveConfig(cfg); err != nil {
+			writeError(w, 500, "Cannot save configuration: "+err.Error())
+			return
 		}
 	}
 
@@ -335,6 +357,9 @@ func apiStart(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/stop
 func apiStop(w http.ResponseWriter, r *http.Request) {
+	lifecycleMu.Lock()
+	defer lifecycleMu.Unlock()
+
 	output, err := runCtl("stop")
 	if err != nil {
 		writeJSON(w, 500, map[string]interface{}{
@@ -353,6 +378,9 @@ func apiStop(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/restart
 func apiRestart(w http.ResponseWriter, r *http.Request) {
+	lifecycleMu.Lock()
+	defer lifecycleMu.Unlock()
+
 	output, err := runCtl("restart")
 	if err != nil {
 		writeJSON(w, 500, map[string]interface{}{
@@ -382,6 +410,7 @@ func apiLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logFile := filepath.Join(logDir, "tun2proxy.log")
+ if r.URL.Query().Get("category")=="certificate" { logFile=filepath.Join(logDir,"certificate.log") }
 
 	// Use tail to get recent lines
 	cmd := exec.Command("tail", "-n", lines, logFile)
@@ -424,6 +453,8 @@ func tunAvailable() bool {
 // ========== Main ==========
 
 func main() {
+	if certBootCLI() { return }
+	if routeCLI() { return }
 	port := os.Getenv("TUN2PROXY_WEB_PORT")
 	if port == "" {
 		port = "8080"
@@ -442,6 +473,8 @@ func main() {
 	log.Printf("  webrootDir:  %s", webrootDir)
 
 	mux := http.NewServeMux()
+	registerCertificates(mux)
+	mux.HandleFunc("/api/apps", cors(apiApps))
 
 	// API routes (CORS-enabled)
 	mux.HandleFunc("/api/status", cors(apiStatus))
@@ -497,7 +530,8 @@ func main() {
 		}
 		// Serve index.html for root
 		if r.URL.Path == "/" {
-			r.URL.Path = "/index.html"
+			http.ServeFile(w, r, filepath.Join(webrootDir, "index.html"))
+			return
 		}
 		fs.ServeHTTP(w, r)
 	}))
@@ -506,7 +540,7 @@ func main() {
 		Addr:         "0.0.0.0:" + port,
 		Handler:      mux,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		WriteTimeout: 120 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 

@@ -1,0 +1,10 @@
+*.sh text eol=lf
+system/bin/tun2proxyctl text eol=lf
+*.go text eol=lf
+*.java text eol=lf
+*.js text eol=lf
+*.html text eol=lf
+*.jar binary
+system/bin/tun2proxy binary
+system/bin/tun2proxy-web binary
+system/bin/tun2proxy-tun-launcher binary

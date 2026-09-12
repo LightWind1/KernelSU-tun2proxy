@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $moduleDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$version = "v1.0.0"
+$version = "v1.0.21"
 $output = Join-Path (Split-Path -Parent $moduleDir) "tun2proxy-for-KernelSU-$version.zip"
 
 # Files/directories to EXCLUDE from the module zip
@@ -29,7 +29,7 @@ Write-Host "=== Packing Tun2Proxy for Android $version ==="
 Write-Host "Module dir: $moduleDir"
 
 if (Test-Path -LiteralPath $output) {
-    Remove-Item -LiteralPath $output -Force
+    throw "Release ZIP already exists. Increment the patch version before packaging again."
 }
 
 Add-Type -AssemblyName System.IO.Compression

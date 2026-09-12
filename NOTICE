@@ -1,0 +1,11 @@
+Certificate compatibility layer inspired by ys1231/MoveCertificate.
+Upstream: https://github.com/ys1231/MoveCertificate
+Reviewed revision: 5775fbd43c2dedfcc66e375d6692e0846f3ea334
+License: Apache License 2.0 (included in LICENSES/MoveCertificate-Apache-2.0.txt).
+
+The compatibility design (Android <=13 system store versus Android >=14
+Conscrypt APEX, active APEX aliases and init/zygote mount namespaces) informed
+this independently implemented Go certificate manager. Original upstream shell
+files are not bundled or executed. Unlike the reference implementation, this
+module does not move user CAs, chmod user stores, delete certificates by name,
+or install a second certificate-management module/server.

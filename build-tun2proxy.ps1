@@ -24,6 +24,8 @@ $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $binDir = Join-Path $scriptDir "system\bin"
 $output = Join-Path $binDir "tun2proxy"
+$launcherSource = Join-Path $scriptDir "cmd\tun2proxy-tun-launcher.c"
+$launcherOutput = Join-Path $binDir "tun2proxy-tun-launcher"
 
 function Info([string]$m) { Write-Host "==> $m" }
 function Die([string]$m)  { Write-Host "ERROR: $m" -ForegroundColor Red; exit 1 }
@@ -69,9 +71,6 @@ function Verify-AndroidBinary([string]$bin, [string]$ndkRoot) {
 
 # --- Locate the Android NDK (windows-x86_64) ---
 $ndkPath = $Ndk
-if (-not $ndkPath) { $ndkPath = $env:ANDROID_NDK_HOME }
-if (-not $ndkPath) { $ndkPath = $env:ANDROID_NDK_ROOT }
-if (-not $ndkPath) { $ndkPath = $env:ANDROID_NDK }
 if (-not $ndkPath) {
     $sdk = $env:ANDROID_HOME
     if (-not $sdk) { $sdk = $env:ANDROID_SDK_ROOT }
@@ -83,6 +82,9 @@ if (-not $ndkPath) {
             Select-Object -First 1 -ExpandProperty FullName
     }
 }
+if (-not $ndkPath) { $ndkPath = $env:ANDROID_NDK_HOME }
+if (-not $ndkPath) { $ndkPath = $env:ANDROID_NDK_ROOT }
+if (-not $ndkPath) { $ndkPath = $env:ANDROID_NDK }
 if (-not $ndkPath -or -not (Test-Path (Join-Path $ndkPath "toolchains\llvm\prebuilt\windows-x86_64\bin"))) {
     Die "Android NDK not found. Install via Android Studio SDK Manager, or pass -Ndk C:\path\to\ndk"
 }
@@ -122,6 +124,30 @@ try {
     git @cloneArgs
     if ($LASTEXITCODE -ne 0) { throw "git clone failed (network?)" }
 
+    # The stock tun crate uses tokio AsyncFd on Android. Some Android kernels
+    # reject epoll_ctl for a root-created /dev/tun fd, so use the local
+    # blocking-worker adapter for this module's direct-root mode.
+    Copy-Item (Join-Path $scriptDir "cmd\android-direct-tun.rs") (Join-Path $work "src\src\android_direct_tun.rs") -Force
+    $apiFile = Join-Path $work "src\src\general_api.rs"
+    $apiText = Get-Content -Raw -Encoding UTF8 $apiFile
+    $nl = [Environment]::NewLine
+    $replacement = '    #[cfg(target_os = "android")]' + $nl +
+        '    let device = crate::android_direct_tun::AndroidTun::new(args.tun_fd.ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "Android direct TUN fd is required"))?)?;' + $nl +
+        '    #[cfg(not(target_os = "android"))]' + $nl +
+        '    let device = tun::create_as_async(&tun_config)?;'
+    $apiText = $apiText.Replace(
+        '    let device = tun::create_as_async(&tun_config)?;',
+        $replacement
+    )
+    Set-Content -Path $apiFile -Value $apiText -Encoding UTF8
+    $libFile = Join-Path $work "src\src\lib.rs"
+    $libText = Get-Content -Raw -Encoding UTF8 $libFile
+    $libText = $libText.Replace(
+        'mod android;',
+        'mod android;' + $nl + '#[cfg(target_os = "android")]' + $nl + 'mod android_direct_tun;'
+    )
+    Set-Content -Path $libFile -Value $libText -Encoding UTF8
+
     # --- Cross-compile ---
     $env:ANDROID_NDK_HOME = $ndkPath
     # 16KB page alignment: Android 15+ (API 35) enforces 16KB pages on some devices.
@@ -129,7 +155,9 @@ try {
 
     Info "Cross-compiling tun2proxy-bin (aarch64-linux-android)..."
     Set-Location (Join-Path $work "src")
-    cargo ndk -t arm64-v8a -p $Api build --release --bin tun2proxy-bin
+    # cargo-ndk 4.x uses -P/--platform for the Android API level;
+    # -p is Cargo's package flag and would incorrectly look for package "26".
+    cargo ndk -t arm64-v8a -P $Api build --release --bin tun2proxy-bin
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
 
     $built = Join-Path $work "src\target\aarch64-linux-android\release\tun2proxy-bin"
@@ -137,6 +165,13 @@ try {
 
     New-Item -ItemType Directory -Path $binDir -Force | Out-Null
     Copy-Item $built $output -Force
+
+    Info "Building Android TUN launcher..."
+    $clang = Join-Path $ndkPath "toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android${Api}-clang.cmd"
+    if (-not (Test-Path $clang)) { throw "Android clang wrapper not found: $clang" }
+    & $clang -O2 $launcherSource -o $launcherOutput
+    if ($LASTEXITCODE -ne 0) { throw "TUN launcher build failed" }
+    if (-not (Test-Path $launcherOutput)) { throw "TUN launcher artifact not found" }
 
     Verify-AndroidBinary $output $ndkPath
 

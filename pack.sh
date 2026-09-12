@@ -6,15 +6,24 @@
 # Only runtime assets go into the module zip.
 set -e
 
-VERSION="v1.0.0"
+VERSION="v1.0.21"
 MODULE_DIR="$(cd "$(dirname "$0")" && pwd)"
 OUTPUT="$MODULE_DIR/../tun2proxy-for-KernelSU-${VERSION}.zip"
 
 echo "=== Packing Tun2Proxy for Android ${VERSION} ==="
 echo "Module dir: $MODULE_DIR"
 
+if [ ! -x "$MODULE_DIR/system/bin/tun2proxy" ]; then
+    echo "ERROR: missing executable system/bin/tun2proxy"
+    echo "Build it first with: ANDROID_NDK=/path/to/android-ndk bash build-tun2proxy.sh"
+    exit 1
+fi
+
 cd "$MODULE_DIR"
-rm -f "$OUTPUT"
+if [ -e "$OUTPUT" ]; then
+    echo "Release ZIP exists. Increment the patch version before packaging again."
+    exit 1
+fi
 
 # Pack all module files, excluding source code and build tools
 zip -r "$OUTPUT" . \

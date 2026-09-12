@@ -2,12 +2,19 @@
 # customize.sh — runs during module installation
 # KernelSU calls this when the module is installed/updated
 
-MODDIR=$(dirname "$0")
-
+# KernelSU provides MODPATH while installing a module.  During installation
+# $0 may be only "customize.sh" (without a directory component), so dirname
+# "$0" can resolve to the installer working directory instead of the module.
+MODDIR="${MODPATH:-$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd)}"
 ui_print() { echo "$@"; }
 
+if [ -z "$MODDIR" ] || [ ! -d "$MODDIR" ]; then
+    ui_print "  [!] Invalid module path: $MODDIR"
+    exit 1
+fi
+
 ui_print "========================================"
-ui_print "  Tun2Proxy for Android v1.0.0"
+ui_print "  Tun2Proxy for Android $(sed -n 's/^version=//p' "$MODDIR/module.prop")"
 ui_print "  KernelSU module"
 ui_print "========================================"
 
@@ -16,6 +23,9 @@ chmod +x "$MODDIR/post-fs-data.sh"
 chmod +x "$MODDIR/service.sh"
 chmod +x "$MODDIR/uninstall.sh"
 chmod +x "$MODDIR/system/bin/tun2proxyctl"
+if [ -f "$MODDIR/system/bin/tun2proxy-tun-launcher" ]; then
+    chmod +x "$MODDIR/system/bin/tun2proxy-tun-launcher"
+fi
 
 # Set executable on web backend
 if [ -f "$MODDIR/system/bin/tun2proxy-web" ]; then
@@ -42,6 +52,6 @@ ui_print "  Usage after boot:"
 ui_print "    su -c tun2proxyctl start"
 ui_print "    su -c tun2proxyctl status"
 ui_print ""
-ui_print "  Web UI: http://<phone-ip>:8080"
+ui_print "  Web UI: http://<phone-ip>:38765"
 ui_print "  Find IP: su -c ip addr show wlan0"
 ui_print "========================================"
