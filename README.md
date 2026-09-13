@@ -77,6 +77,11 @@ HTTP CONNECT 不等于 Yakit：Burp/其他代理页面显示“可连接但未�
 Android 7–13、14、16 的设备矩阵仍需要对应实机验证，不能把 Android 15
 上的结果当作所有 ROM 的保证。当前发布验证范围见下方报告。
 
+Android 15 已实测普通 CA 加入/移出、用户 CA 复制保留原件及重启恢复。
+Android 默认 TrustManager 经 Yakit 的 HTTPS 对照：
+加入后HTTP200，移出后SSLHandshakeException，再次加入恢复HTTP200。
+MoveCertificate可保留安装，但不要同时启用两个覆盖同一CA库的注入模块。
+
 ## 国密限制
 
 Go 解析器能读取 SM2 CA 元数据，但不将 ASN.1 解码视作签名或系统信任验证。

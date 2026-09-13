@@ -25,6 +25,7 @@ type AppEntry struct {
 	UID     int    `json:"uid"`
 }
 type RouteState struct {
+	Boot     string     `json:"boot,omitempty"`
 	Mode     string     `json:"mode"`
 	UIDs     []int      `json:"uids"`
 	PID      int        `json:"pid"`
@@ -101,11 +102,14 @@ func writeRoutes(s RouteState) error {
 }
 func cleanupRoutes() error {
 	s := readRoutes()
+	if s.Boot != "" && s.Boot != bootID() {
+		return os.Remove(routeStatePath())
+	}
 	// Only commands journaled by this module are eligible for cleanup.
 	failures := []string{}
 	for i := len(s.Undo) - 1; i >= 0; i-- {
 		out, err := routeCmd(s.Undo[i]...)
-		if err != nil && !strings.Contains(out, "No such") && !strings.Contains(out, "Bad rule") && !strings.Contains(out, "Cannot find device") && !strings.Contains(out, "does not exist") && !strings.Contains(out, "No chain/target/match") {
+		if err != nil && !routeAlreadyAbsent(out) {
 			failures = append(failures, err.Error())
 		}
 	}
@@ -113,6 +117,14 @@ func cleanupRoutes() error {
 		return fmt.Errorf("routing cleanup incomplete (journal retained): %s", strings.Join(failures, "; "))
 	}
 	return os.Remove(routeStatePath())
+}
+func routeAlreadyAbsent(out string) bool {
+	for _, message := range []string{"No such", "Bad rule", "Cannot find device", "does not exist", "No chain/target/match", "Couldn't find target `" + routeChain + "'"} {
+		if strings.Contains(out, message) {
+			return true
+		}
+	}
+	return false
 }
 func engineIdentity(pid int) string {
 	exe, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
@@ -205,7 +217,7 @@ func startRoutes() (err error) {
 				return fmt.Errorf("%s chain already exists", tool)
 			}
 		}
-		state := RouteState{Mode: mode, UIDs: uids, PID: ps.PID, Identity: ident}
+		state := RouteState{Boot: bootID(), Mode: mode, UIDs: uids, PID: ps.PID, Identity: ident}
 		if err = writeRoutes(state); err != nil {
 			return err
 		}

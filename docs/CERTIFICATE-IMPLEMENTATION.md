@@ -1,7 +1,7 @@
 # 证书集成实现与验收记录
 
-状态：代码与候选构建阶段；**尚未完成系统注入实机验收，不应视作正式验收通过。**
-日期：2026-09-13。候选版本 v1.0.21 / versionCode 22。
+状态：**Android 15 / SDK35 独立系统CA与代理回归验证通过**；其他Android版本尚无对应实机。
+日期：2026-09-13。发布版本 v1.0.22 / versionCode 23。
 
 ## 1. Git commit
 
@@ -55,8 +55,9 @@ HTTP407与HTTP404保留清晰状态；普通非Yakit网页不会被当网络连�
 
 用户CA：扫描 /data/misc/user/*/cacerts-added，按ID及用户选择。
 加入系统先复制，不删除原CA。删除用户CA须明确确认，先备份到私有user-trash。
-测试机当前用户CA目录为空：仅枚举成功；加入/移出用户CA尚待授权后安排自有测试证书。
-未删除任何无关证书。
+测试前用户CA目录为空。创建本次测试副本后，枚举/加入/移出均通过，
+且用户原件的SHA256保持一致。测试后只清理该副本，并验证私有恢复备份存在。
+未删除任何无关证书；当前用户目录恢复为空。
 
 ## 13–14. Android兼容
 
@@ -67,7 +68,8 @@ init/zygote命名空间分别确认指纹，原生AndroidCAStore检查system ali
 32层保护提示重启，避免无限叠加；挂载失败回滚，新库存不提交。
 
 7–13/14/16无对应测试机，仅代码路径完成，不宣称实测通过。
-Android15的真实安装/移出尚未验证，原因是MoveCertificate仍活动。
+Android15在用户授权停用MoveCertificate并重启后，真实安装、移出、再次加入
+与重启恢复均通过。原生AndroidCAStore状态与实际HTTPS握手均作了正反对照。
 
 ## 15–16. MoveCertificate来源与License
 
@@ -106,6 +108,8 @@ helper为UID0，现有路由已排除root；实测Yakit地址路由wlan0，不�
 - 安装/移出失败不提交inventory，成功提交且移出保留缓存。
 - Yakit指纹轮换：check不替换，sync失败保留旧CA，sync成功切换。
 - Go arm64交叉编译、go vet、原页inline JavaScript与新JS语法检查。
+- 重启路由日志兼容回归：旧boot日志不执行过期规则删除；识别本ROM的
+  Couldn't find target T2P_CAPTURE错误，且不忽略权限/锁/其他chain错误。
 
 原仓库没有现成自动化测试套件；以上新增配置回归测试不等于所有代理组合实测。
 浏览器交互工具运行时崩溃，尚无视觉/点击自动化通过记录。
@@ -115,8 +119,10 @@ helper为UID0，现有路由已排除root；实测Yakit地址路由wlan0，不�
 Android 15 / SDK35；ksud4.1.3。
 APEX：/apex/com.android.conscrypt 与 /apex/com.android.conscrypt@352090000。
 System fallback：/system/etc/security/cacerts。
-原tun2proxy PID11822保持运行；UID10118→tun0，UID2000→wlan0，root上游→wlan0。
-证书后端测试端口38766/38767，未替换运行中的原代理服务。
+初期测试保持原PID11822；随后安装v1.0.21并在路由回归中修复旧boot清理，
+修复已纳入v1.0.22。临时测试端口38766/38767/38768均已关闭。
+全部模式UID2000→tun0并HTTP200；选定模式UID10118→tun0并HTTP200，
+未选UID2000→wlan0，root上游→wlan0。真实系统浏览器启动验证通过。
 
 实际Normal SHA256：
 7f0b6b7415dbd663ffb5028e385ffab6e89456f95c02a7c9ffb51708532b13b1
@@ -125,21 +131,34 @@ System fallback：/system/etc/security/cacerts。
 
 Normal与GM下载/解析/重复同步/检查更新通过。
 GM AndroidOpenSSL：parsed=true，signatureValid=false，trusted=false，安装被拒绝。
-Normal安装因检测到MoveCertificate tmpfs挂载被安全拒绝，原信任库未变。
-当前缓存2、managed0、mounted0；用户CA0。
-卸载/重启恢复、Normal系统加入/移出、用户CA复制流程仍待独立实机验证。
+起初Normal安装被MoveCertificate活动挂载安全拦截；用户明确授权停用并重启后：
+- Normal加入：AndroidCAStore trusted=true；移出：trusted=false，无残余本模块挂载。
+- 用户CA复制加入/移出：源文件指纹完全一致；仅清理本次自建测试副本。
+- 独立重启恢复：pending=0，普通CA重新可见且trusted=true。
+- 卸载所用--cert-remove清理入口通过；未实际卸载整个代理模块。
+- 清理后的原厂CA内容汇总SHA256与挂载前基线一致：
+  d1a6996a5f4bbac0760495fa7ed5ebc20b933c27d91fbccabd6c00cf7de3c287。
+- MoveCertificate的145个证书文件原封不动，前后汇总SHA256均为：
+  1c3332f0f28159ad6cfefce9beb8efe01c3d2c1298e8cddac73ac04f632b1641。
+- Android默认TrustManager通过Yakit请求HTTPS：安装CA后HTTP200，
+  peer为Yakit签发的example.com；移出CA后SSLHandshakeException；
+  重新加入后再次HTTP200，没有关闭验证或自定义trust-all。
+
+最终意图：缓存2、managed1、mounted1；普通CA加入，GM仅缓存；用户CA0。
+MoveCertificate保留安装文件与所有证书，暂时停用，避免两个模块抢占同一信任库。
 
 ## 22. release ZIP
 
-目标：tun2proxy-for-KernelSU-v1.0.21.zip。
+目标：tun2proxy-for-KernelSU-v1.0.22.zip。
 仅包含原模块运行时、同一个WebUI与新增小型CA探针；不包含cmd源码或另一套模块。
-本文件记录为候选构建；最终构建与ZIP核对结果由交付消息报告。
-未正式刷入此候选版。
+v1.0.21构建与实际安装成功；v1.0.22纳入重启路由兼容修复与本次验收记录。
+最终ZIP校验和、安装状态与Git提交由交付消息给出。
 
 ## 23. 已知限制及下一步
 
-- 等待用户允许临时停用MoveCertificate并重启，保留其数据，不自动卸载。
-- 暂不能给Normal实际系统安装、移出、用户CA迁移或全部验收标准打勾。
+- MoveCertificate可以保留安装，但不要与本模块同时启用重叠的CA注入。
+- 正常CA与用户CA流程已实测；不同Android版本矩阵、整模块实际卸载、
+  浏览器视觉/点击自动化仍未全覆盖，不能给所有设备的验收标准打勾。
 - 运行中App可能保留旧CA缓存/命名空间；必须重开，某些ROM需重启。
 - 国密不能签名验证，不代表公共CA文件下载失败；不伪报信任。
 - 不承诺绕过certificate pinning/native TLS/自带trust store。

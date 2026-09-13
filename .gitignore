@@ -6,6 +6,7 @@
 cmd/certificate-probe/build/
 cmd/cert-backend-test*
 cmd/cert-tests
+cmd/https-probe.jar
 
 # Local tun2proxy source checkout (build-tun2proxy.* clones to a temp dir;
 # this only guards against a manual `git submodule add` / clone)

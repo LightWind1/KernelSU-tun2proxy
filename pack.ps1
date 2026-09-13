@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $moduleDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$version = "v1.0.21"
+$version = "v1.0.22"
 $output = Join-Path (Split-Path -Parent $moduleDir) "tun2proxy-for-KernelSU-$version.zip"
 
 # Files/directories to EXCLUDE from the module zip
