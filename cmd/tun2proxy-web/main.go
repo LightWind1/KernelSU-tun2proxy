@@ -19,12 +19,12 @@ import (
 
 var (
 	modDir     string
-	binary      string
-	ctlScript   string
-	configFile  string
-	logDir      string
-	runDir      string
-	webrootDir  string
+	binary     string
+	ctlScript  string
+	configFile string
+	logDir     string
+	runDir     string
+	webrootDir string
 )
 
 func init() {
@@ -58,17 +58,17 @@ func init() {
 // ========== Config Schema ==========
 
 type Config struct {
-	RouteMode string `json:"route_mode"`
+	RouteMode   string   `json:"route_mode"`
 	AppPackages []string `json:"app_packages"`
-	Version      string   `json:"version"`
-	Enabled      bool     `json:"enabled"`
-	TunName      string   `json:"tun_name"`
-	ProxyURL     string   `json:"proxy_url"`
-	DNSMode      string   `json:"dns_mode"`
-	BypassIPs    []string `json:"bypass_ips"`
-	TCPTimeout   int      `json:"tcp_timeout"`
-	UDPTimeout   int      `json:"udp_timeout"`
-	UDPGWServer  string   `json:"udpgw_server"`
+	Version     string   `json:"version"`
+	Enabled     bool     `json:"enabled"`
+	TunName     string   `json:"tun_name"`
+	ProxyURL    string   `json:"proxy_url"`
+	DNSMode     string   `json:"dns_mode"`
+	BypassIPs   []string `json:"bypass_ips"`
+	TCPTimeout  int      `json:"tcp_timeout"`
+	UDPTimeout  int      `json:"udp_timeout"`
+	UDPGWServer string   `json:"udpgw_server"`
 }
 
 var configMu sync.Mutex
@@ -101,6 +101,32 @@ func loadConfig() (Config, error) {
 }
 
 func saveConfig(cfg Config) error {
+	profileMu.Lock()
+	defer profileMu.Unlock()
+	p, e := readProfiles()
+	if e != nil {
+		return e
+	}
+	old, e := loadConfig()
+	if e != nil {
+		return e
+	}
+	if e = saveRuntimeConfig(cfg); e != nil {
+		return e
+	}
+	for i := range p.Profiles {
+		if p.Profiles[i].ID == p.ActiveID {
+			p.Profiles[i].Config = cfg
+		}
+	}
+	if e = writeProfiles(p); e != nil {
+		_ = saveRuntimeConfig(old)
+		return e
+	}
+	return nil
+}
+
+func saveRuntimeConfig(cfg Config) error {
 	configMu.Lock()
 	defer configMu.Unlock()
 
@@ -109,7 +135,28 @@ func saveConfig(cfg Config) error {
 	if err != nil {
 		return err
 	}
- return os.WriteFile(configFile, data, 0600)
+	f, e := os.CreateTemp(filepath.Dir(configFile), ".config-")
+	if e != nil {
+		return e
+	}
+	name := f.Name()
+	defer os.Remove(name)
+	if e = f.Chmod(0600); e != nil {
+		f.Close()
+		return e
+	}
+	if _, e = f.Write(data); e != nil {
+		f.Close()
+		return e
+	}
+	if e = f.Sync(); e != nil {
+		f.Close()
+		return e
+	}
+	if e = f.Close(); e != nil {
+		return e
+	}
+	return os.Rename(name, configFile)
 }
 
 // ========== Process Status ==========
@@ -257,7 +304,7 @@ func apiStatus(w http.ResponseWriter, r *http.Request) {
 		"web_running":   webRunning,
 		"config":        cfg,
 		"tun_available": tunAvailable(),
-		"routing": readRoutes(),
+		"routing":       readRoutes(),
 	})
 }
 
@@ -410,7 +457,9 @@ func apiLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logFile := filepath.Join(logDir, "tun2proxy.log")
- if r.URL.Query().Get("category")=="certificate" { logFile=filepath.Join(logDir,"certificate.log") }
+	if r.URL.Query().Get("category") == "certificate" {
+		logFile = filepath.Join(logDir, "certificate.log")
+	}
 
 	// Use tail to get recent lines
 	cmd := exec.Command("tail", "-n", lines, logFile)
@@ -453,8 +502,12 @@ func tunAvailable() bool {
 // ========== Main ==========
 
 func main() {
-	if certBootCLI() { return }
-	if routeCLI() { return }
+	if certBootCLI() {
+		return
+	}
+	if routeCLI() {
+		return
+	}
 	port := os.Getenv("TUN2PROXY_WEB_PORT")
 	if port == "" {
 		port = "8080"
@@ -475,6 +528,7 @@ func main() {
 	mux := http.NewServeMux()
 	registerCertificates(mux)
 	mux.HandleFunc("/api/apps", cors(apiApps))
+	mux.HandleFunc("/api/profiles", cors(apiProfiles))
 
 	// API routes (CORS-enabled)
 	mux.HandleFunc("/api/status", cors(apiStatus))

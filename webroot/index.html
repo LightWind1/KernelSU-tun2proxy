@@ -142,6 +142,17 @@ input,select{background:rgba(5,5,18,.52);color:var(--text);border:1px solid rgba
 <!-- Settings Tab -->
 <div id="tab-settings">
   <div class="card">
+    <div style="font-weight:600;margin-bottom:10px">电脑连接配置</div>
+    <div class="row">
+      <select id="profile-select" aria-label="当前电脑连接配置"></select>
+      <button class="btn btn-secondary" id="profile-create">新增电脑</button>
+      <button class="btn btn-secondary" id="profile-clone">复制当前</button>
+      <button class="btn btn-secondary" id="profile-rename">重命名</button>
+      <button class="btn btn-secondary" id="profile-delete">删除</button>
+    </div>
+    <p style="color:var(--muted);font-size:12px;margin-top:10px">每台电脑保存独立代理、分流和网络设置。运行中请先停止服务再切换；证书按代理 IP:端口关联，不随配置删除。</p>
+  </div>
+  <div class="card">
     <div style="font-weight:600;margin-bottom:10px">连接 Yakit</div>
     <p style="color:var(--muted);font-size:13px;line-height:1.8;margin-bottom:16px">电脑先启动 Yakit MITM，允许局域网连接。手机与电脑连接同一局域网，填写电脑 IP 和 Yakit 监听端口，再点击“保存并启动”。HTTPS MITM 需要受信任的 CA，可在“证书管理”中同步并安装 Yakit MITM 证书。<button class="btn btn-secondary" onclick="switchTab('certificates')">打开证书管理</button></p>
     <div class="grid">
@@ -228,6 +239,7 @@ input,select{background:rgba(5,5,18,.52);color:var(--text);border:1px solid rgba
 <div id="tab-certificates" style="display:none">
   <section class="card">
     <h2>证书管理</h2>
+    <div class="field"><label for="cert-profile">查看哪台电脑的证书</label><select id="cert-profile"></select></div>
     <p id="cert-upstream" style="margin:12px 0;overflow-wrap:anywhere">读取已保存的连接配置…</p>
     <p id="cert-yakit-state">尚未测试</p>
     <div class="row" style="margin-top:12px">
@@ -345,6 +357,7 @@ async function saveConfig(){
       return;
     }
     config = cfg;
+    formDirty = false;
     toast('Configuration saved');
     renderConfig();
     renderStats();
@@ -371,6 +384,8 @@ async function startProxy(){
       return;
     }
     toast('tun2proxy started');
+    formDirty = false;
+    loadProfiles();
     loadStatus();
   }catch(e){
     toast('Start failed: '+e.message);
@@ -693,6 +708,7 @@ const note=document.createElement('p');note.textContent='引擎运行不代表�
 loadStatus();
 setInterval(loadStatus, 5000);
 </script>
+<script src="profiles.js"></script>
 <script src="certificates.js"></script>
 </body>
 </html>

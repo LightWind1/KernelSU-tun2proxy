@@ -179,18 +179,78 @@ func certificateView(v certificate.Inventory) map[string]interface{} {
 	}
 	return map[string]interface{}{"entries": certificate.Entries(v), "yakit": v.Yakit, "users": users, "system": stock, "environment": d, "mounted": mounted, "pending": pending, "mounts": mounts.Mounts, "capabilities": capabilities, "errors": errs}
 }
+func endpointKey(proxyURL string) (string, error) {
+	u, e := url.Parse(proxyURL)
+	if e != nil || u.Scheme != "http" || u.Hostname() == "" || u.Port() == "" {
+		return "", errors.New("Yakit certificates require a saved HTTP proxy endpoint")
+	}
+	return "http://" + u.Host, nil
+}
+func selectedCertProfile(id string) (ConnectionProfile, error) {
+	p, e := readProfiles()
+	if e != nil {
+		return ConnectionProfile{}, e
+	}
+	if id == "" {
+		id = p.ActiveID
+	}
+	v, ok := profileByID(p, id)
+	if !ok {
+		return v, errors.New("connection profile not found")
+	}
+	return v, nil
+}
+func scopedYakit(v *certificate.Inventory, key string) bool {
+	if active, e := selectedCertProfile(""); e == nil {
+		if original, e := endpointKey(active.Config.ProxyURL); e == nil {
+			key = original
+		}
+	}
+	changed := false
+	for _, kind := range []string{"normal", "gm"} {
+		old, ok := v.Yakit[kind]
+		if !ok {
+			continue
+		}
+		scoped := key + "|" + kind
+		if _, exists := v.Yakit[scoped]; !exists {
+			if old.LocalID != "" && len(old.History) == 0 {
+				old.History = []string{old.LocalID}
+			}
+			v.Yakit[scoped] = old
+		}
+		delete(v.Yakit, kind)
+		changed = true
+	}
+	return changed
+}
 func certList(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		writeError(w, 405, "Use GET")
 		return
 	}
+	profile, e := selectedCertProfile(r.URL.Query().Get("profile_id"))
+	if e != nil {
+		writeError(w, 400, e.Error())
+		return
+	}
+	key, _ := endpointKey(profile.Config.ProxyURL)
 	var view map[string]interface{}
-	e := certLocked(func() error {
+	e = certLocked(func() error {
 		v, e := certStore.Load()
 		if e != nil {
 			return e
 		}
+		if key != "" && scopedYakit(&v, key) {
+			if e = certStore.Save(v); e != nil {
+				return e
+			}
+		}
 		view = certificateView(v)
+		view["profileId"] = profile.ID
+		view["profileName"] = profile.Name
+		view["proxyEndpoint"] = key
+		view["yakit"] = map[string]certificate.Remote{"normal": v.Yakit[key+"|normal"], "gm": v.Yakit[key+"|gm"]}
 		return nil
 	})
 	if e != nil {
@@ -398,8 +458,9 @@ func yakitAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request struct {
-		Action string `json:"action"`
-		Kind   string `json:"kind"`
+		Action    string `json:"action"`
+		Kind      string `json:"kind"`
+		ProfileID string `json:"profile_id"`
 	}
 	if json.NewDecoder(r.Body).Decode(&request) != nil {
 		writeError(w, 400, "Invalid request")
@@ -409,12 +470,17 @@ func yakitAPI(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "Unknown Yakit action")
 		return
 	}
-	cfg, e := loadConfig()
+	profile, e := selectedCertProfile(request.ProfileID)
 	if e != nil {
 		writeError(w, 500, "Cannot read connection configuration")
 		return
 	}
-	client, e := yakit.New(cfg.ProxyURL)
+	key, e := endpointKey(profile.Config.ProxyURL)
+	if e != nil {
+		writeError(w, 400, e.Error())
+		return
+	}
+	client, e := yakit.New(profile.Config.ProxyURL)
 	if e != nil {
 		writeError(w, 400, e.Error())
 		return
@@ -448,7 +514,9 @@ func yakitAPI(w http.ResponseWriter, r *http.Request) {
 			if e != nil {
 				return e
 			}
-			remote := v.Yakit[kind]
+			scopedYakit(&v, key)
+			slot := key + "|" + kind
+			remote := v.Yakit[slot]
 			remote.RemoteID = c.ID
 			remote.Endpoint = endpoint
 			remote.CheckedAt = time.Now().UTC()
@@ -459,8 +527,18 @@ func yakitAPI(w http.ResponseWriter, r *http.Request) {
 				}
 				if prior, ok := v.Entries[remote.LocalID]; ok && prior.Managed && prior.ID != c.ID {
 					// New generation is fully verified before committing either fingerprint.
-					prior.Managed = false
-					v.Entries[prior.ID] = prior
+					// A shared CA may still be the current certificate of another computer.
+					shared := false
+					for other, link := range v.Yakit {
+						if other != slot && link.LocalID == prior.ID {
+							shared = true
+							break
+						}
+					}
+					if !shared {
+						prior.Managed = false
+						v.Entries[prior.ID] = prior
+					}
 					entry.Managed = true
 					v.Entries[c.ID] = entry
 					if e = certificateApply(v); e != nil {
@@ -468,8 +546,18 @@ func yakitAPI(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				remote.LocalID = c.ID
+				found := false
+				for _, id := range remote.History {
+					if id == c.ID {
+						found = true
+						break
+					}
+				}
+				if !found {
+					remote.History = append(remote.History, c.ID)
+				}
 			}
-			v.Yakit[kind] = remote
+			v.Yakit[slot] = remote
 			if e = certStore.Save(v); e != nil {
 				_ = certificateApply(old)
 				return e

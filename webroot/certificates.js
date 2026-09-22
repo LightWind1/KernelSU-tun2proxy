@@ -12,7 +12,7 @@ async function certWork(fn){
  finally{certificateBusy=false;document.querySelectorAll('#tab-certificates button').forEach(b=>b.disabled=false);renderCertificatePage()}
 }
 async function loadCertificates(){
- try{certificateData=await certFetch('/api/certificates');renderCertificatePage()}catch(e){$('cert-message').textContent=e.message}
+ try{certificateData=await certFetch('/api/certificates?profile_id='+encodeURIComponent($('cert-profile').value));renderCertificatePage()}catch(e){$('cert-message').textContent=e.message}
 }
 function certButton(label,fn,disabled=false){
  const b=document.createElement('button');b.className='btn btn-secondary';b.textContent=label;b.disabled=disabled;b.onclick=()=>certWork(fn);return b;
@@ -53,9 +53,8 @@ function certCard(c,source){
 function renderCertificatePage(){
  if(!certificateData)return;
  const d=certificateData;
- if(testedProxyURL!==config.proxy_url)yakitDiscovery=null;
- const p=config.proxy_url||'';
- try{const u=new URL(p);u.username='';u.password='';$('cert-upstream').textContent=(u.protocol==='http:'?'Yakit / Burp（HTTP CONNECT）':'当前上游 '+u.protocol)+' · '+u.toString()}catch(e){$('cert-upstream').textContent='尚未保存连接配置'}
+ if(testedProxyURL!==d.proxyEndpoint)yakitDiscovery=null;
+ $('cert-upstream').textContent=d.profileName+' · '+(d.proxyEndpoint||'此配置不是 HTTP CONNECT 代理');
  $('cert-sync').disabled=!yakitDiscovery?.recognized||certificateBusy;
  $('cert-yakit-state').textContent=yakitDiscovery?.message||'尚未测试当前已保存的上游';
  const area=$('yakit-certificates');area.replaceChildren();
@@ -67,7 +66,9 @@ function renderCertificatePage(){
   group.append(certText('p','本地 SHA256: '+(remote.localID||'—')),certText('p','远程 SHA256: '+(remote.remoteID||'未检查')));
   const row=document.createElement('div');row.className='row';
   row.append(certButton('检查更新',()=>yakitAction('check',kind),!yakitDiscovery?.recognized),certButton(update?'更新证书':'下载/同步',()=>yakitAction('sync',kind),!yakitDiscovery?.recognized));
-  group.append(row);if(c)group.append(certCard(c,'managed'));area.append(group);
+  group.append(row);if(c)group.append(certCard(c,'managed'));
+  for(const id of remote.history||[]){if(id===remote.localID)continue;const prior=d.entries.find(e=>e.id===id);if(prior){group.append(certText('p','历史证书 · '+id),certCard(prior,'managed'))}}
+  area.append(group);
  }
  const list=$('local-certificates');list.replaceChildren();
  const category=$('cert-category').value;
@@ -77,8 +78,8 @@ function renderCertificatePage(){
  $('certificate-diagnostics').textContent=JSON.stringify({yakit:yakitDiscovery,environment:d.environment,managedCA:d.entries.filter(c=>c.managed).length,mountedCA:Object.keys(d.mounted).length,pendingReboot:d.pending,errors:d.errors},null,2);
 }
 async function yakitAction(action,kind){
- const d=await certFetch('/api/yakit',{action,kind:kind||''});
- yakitDiscovery=d.discovery||d;testedProxyURL=config.proxy_url;
+ const d=await certFetch('/api/yakit',{action,kind:kind||'',profile_id:$('cert-profile').value});
+ yakitDiscovery=d.discovery||d;testedProxyURL=certificateData?.proxyEndpoint||'';
  $('cert-message').textContent=d.results?JSON.stringify(d.results,null,2):d.message;
  await loadCertificates();
 }
@@ -91,6 +92,7 @@ async function importCertificate(file){
 }
 $('cert-file').onchange=()=>certWork(()=>importCertificate($('cert-file').files[0]));
 $('cert-category').onchange=renderCertificatePage;
+$('cert-profile').onchange=()=>{yakitDiscovery=null;loadCertificates()};
 $('cert-test').onclick=()=>certWork(()=>yakitAction('test'));
 $('cert-sync').onclick=()=>certWork(()=>yakitAction('sync'));
 $('cert-refresh').onclick=loadCertificates;

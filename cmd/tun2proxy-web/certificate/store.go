@@ -21,6 +21,7 @@ type Remote struct {
 	RemoteID  string    `json:"remoteID"`
 	Endpoint  string    `json:"endpoint"`
 	CheckedAt time.Time `json:"checkedAt"`
+	History   []string  `json:"history,omitempty"`
 }
 type Inventory struct {
 	Version int               `json:"version"`
@@ -148,8 +149,15 @@ func (s Store) Delete(v *Inventory, id string) error {
 	for k, r := range v.Yakit {
 		if r.LocalID == id {
 			r.LocalID = ""
-			v.Yakit[k] = r
 		}
+		history := r.History[:0]
+		for _, prior := range r.History {
+			if prior != id {
+				history = append(history, prior)
+			}
+		}
+		r.History = history
+		v.Yakit[k] = r
 	}
 	delete(v.Entries, id)
 	// Persist first: interrupted cleanup cannot leave a dangling inventory entry.

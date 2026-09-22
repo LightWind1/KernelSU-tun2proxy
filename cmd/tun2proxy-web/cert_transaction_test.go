@@ -64,6 +64,7 @@ func TestYakitUpdateTransaction(t *testing.T) {
 	}))
 	defer proxy.Close()
 	saveConfig(Config{ProxyURL: proxy.URL})
+	slot := proxy.URL + "|normal"
 	call := func(action string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
 		yakitAPI(w, httptest.NewRequest("POST", "/api/yakit", strings.NewReader("{\"action\":\""+action+"\",\"kind\":\"normal\"}")))
@@ -71,13 +72,13 @@ func TestYakitUpdateTransaction(t *testing.T) {
 	}
 	call("check")
 	v, _ = certStore.Load()
-	if v.Yakit["normal"].LocalID != oldCA.ID || v.Yakit["normal"].RemoteID != newCA.ID {
+	if v.Yakit[slot].LocalID != oldCA.ID || v.Yakit[slot].RemoteID != newCA.ID {
 		t.Fatal("check replaced local CA")
 	}
 	certificateApply = func(certificate.Inventory) error { return errors.New("verification failed") }
 	call("sync")
 	v, _ = certStore.Load()
-	if v.Yakit["normal"].LocalID != oldCA.ID || !v.Entries[oldCA.ID].Managed {
+	if v.Yakit[slot].LocalID != oldCA.ID || !v.Entries[oldCA.ID].Managed {
 		t.Fatal("failed update lost old CA")
 	}
 	if _, ok := v.Entries[newCA.ID]; ok {
@@ -86,7 +87,7 @@ func TestYakitUpdateTransaction(t *testing.T) {
 	certificateApply = func(certificate.Inventory) error { return nil }
 	call("sync")
 	v, _ = certStore.Load()
-	if v.Yakit["normal"].LocalID != newCA.ID || !v.Entries[newCA.ID].Managed || v.Entries[oldCA.ID].Managed {
+	if v.Yakit[slot].LocalID != newCA.ID || !v.Entries[newCA.ID].Managed || v.Entries[oldCA.ID].Managed {
 		t.Fatal("successful update did not switch")
 	}
 }

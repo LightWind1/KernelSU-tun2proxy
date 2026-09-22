@@ -6,9 +6,9 @@
 ## 连接与代理范围
 
 在 KernelSU 打开 WebUI，或访问手机的 `http://127.0.0.1:38765`。
-连接配置仍是唯一上游设置：HTTP CONNECT（Yakit/Burp）、SOCKS5 或 SOCKS5h。
-电脑局域网地址、监听端口及可选用户名/密码统一保存在已有 `proxy_url`。
-证书页面只读该配置；修改连接后请保存，再重新测试 Yakit。
+连接配置支持保存多台电脑：新增、复制、重命名、切换和删除。每台电脑分别保存代理地址、认证、App 分流和网络参数；原有 `/data/adb/tun2proxy/config.json` 仍是当前生效配置，首次升级自动归入“默认电脑”。运行中先停止 tun2proxy 再切换，切换后点击“保存并启动”。HTTP CONNECT（Yakit/Burp）、SOCKS5 或 SOCKS5h 仍共用原来的上游设置控件。
+电脑局域网地址、监听端口及可选用户名/密码统一保存在各配置已有的 `proxy_url`。
+证书管理可以选择已保存的电脑，直接使用该配置中的代理 URL 和认证请求 `http://mitm`，不另设 Yakit 地址。普通/国密 CA 和历史指纹按 HTTP 代理 IP:端口归档；两份配置指向同一 IP:端口时共享证书记录。删除连接配置不删除证书缓存或系统注入。Android 系统信任库是全局的，切换电脑不会自动移出已托管的 CA。
 
 代理范围保持“仅运行引擎 / 选定主用户 App / 全部非 root 本机流量”。
 DNS、TUN、TCP/UDP 超时、UDP Gateway、Bypass、Auto Start 均沿用现有配置。
