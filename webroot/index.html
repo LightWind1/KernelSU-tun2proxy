@@ -657,14 +657,16 @@ function switchTab(name){
 // ========== Init ==========
 // Keep everyday setup compact while preserving existing advanced controls.
 $('tab-settings').addEventListener('input', () => { formDirty=true; updateProxyPreview(); });
-const cards = Array.from($('tab-settings').children);
+const connectionCard=$('cfg-proto').closest('.card');
+const networkCard=$('cfg-dns').closest('.card');
+const bypassCard=$('bypass-list').closest('.card');
 const scope=document.createElement('section');scope.className='card';
 scope.innerHTML='<h2 style="font-size:16px;margin-bottom:12px">代理范围</h2>'+
  '<select id="route-mode" aria-label="代理范围"><option value="off">仅运行引擎（不分流）</option><option value="selected">仅选中的 App</option><option value="all">全部手机流量（排除 root）</option></select>'+
  '<p id="routing-state" style="margin:12px 0;color:var(--green)" role="status">正在读取分流状态</p>'+
  '<div id="app-picker"><input id="app-search" placeholder="搜索应用包名" aria-label="搜索应用包名" style="width:100%;margin-bottom:10px"><div id="app-list" style="max-height:260px;overflow:auto">正在加载应用…</div></div>'+
  '<p style="font-size:12px;color:var(--muted);line-height:1.8;margin-top:12px">不使用 Android VPN 服务。选择后点击“保存并启动”应用。应用按包名列出，共享 UID 的应用会一起分流；目前支持主用户。<br>HTTP 抓包模式阻止被选范围内的 IPv6 与非 DNS UDP（包括 QUIC），不支持的协议可能无法联网。选中模式的系统代发 DNS 可能直连。全部模式不包含 root 和热点转发流量。</p>';
-cards[0].after(scope);
+connectionCard.after(scope);
 $('route-mode').onchange=()=>{formDirty=true;renderApps()};
 $('app-search').oninput=renderApps;
 function renderApps(){
@@ -687,8 +689,8 @@ const summary = document.createElement('summary');
 summary.textContent='高级设置 · DNS、TUN 与绕过规则（通常保持默认）';
 summary.style.cssText='cursor:pointer;padding:8px 0;font-size:13px';
 advanced.append(summary);
-cards[1].before(advanced);
-advanced.append(cards[1], cards[2]);
+networkCard.before(advanced);
+advanced.append(networkCard,bypassCard);
 const auth=document.createElement('details');
 auth.style.marginTop='14px';
 const authTitle=document.createElement('summary');
@@ -696,7 +698,7 @@ authTitle.textContent='代理认证（一般不填）';
 auth.append(authTitle);
 const authGrid=document.createElement('div');authGrid.className='grid';authGrid.style.marginTop='12px';
 authGrid.append($('cfg-user').closest('.field'),$('cfg-pass').closest('.field'));
-auth.append(authGrid);cards[0].querySelector('.grid').after(auth);
+auth.append(authGrid);connectionCard.querySelector('.grid').after(auth);
 $('btn-start').textContent='保存并启动';$('btn-stop').textContent='停止';$('btn-restart').textContent='重启服务';
 document.querySelector('.btn-save').textContent='仅保存配置';
 document.querySelector('[data-tab="settings"]').textContent='连接配置';
@@ -704,7 +706,7 @@ document.querySelector('[data-tab="logs"]').textContent='运行日志';
 document.querySelector('[data-tab="diagnose"]').textContent='故障诊断';
 $('stat-proxy').previousElementSibling.textContent='已保存的上游代理（电脑）';
 $('cfg-autostart').nextElementSibling.textContent='开机自动启动';
-const note=document.createElement('p');note.textContent='引擎运行不代表抓包成功，请在 Yakit 中确认请求记录。';note.style.cssText='font-size:12px;color:var(--muted);margin-top:12px';cards[0].append(note);
+const note=document.createElement('p');note.textContent='引擎运行不代表抓包成功，请在 Yakit 中确认请求记录。';note.style.cssText='font-size:12px;color:var(--muted);margin-top:12px';connectionCard.append(note);
 loadStatus();
 setInterval(loadStatus, 5000);
 </script>

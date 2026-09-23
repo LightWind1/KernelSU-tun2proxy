@@ -6,7 +6,7 @@
 # Only runtime assets go into the module zip.
 set -e
 
-VERSION="v1.0.24"
+VERSION="v1.0.25"
 MODULE_DIR="$(cd "$(dirname "$0")" && pwd)"
 OUTPUT="$MODULE_DIR/../tun2proxy-for-KernelSU-${VERSION}.zip"
 
