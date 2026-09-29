@@ -290,6 +290,7 @@ input,select{background:rgba(5,5,18,.52);color:var(--text);border:1px solid rgba
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
+<script src="app-picker.js"></script>
 <script>
 // ========== State ==========
 // Follow the actual Web port instead of contacting another module on :8080.
@@ -656,7 +657,11 @@ function switchTab(name){
 
 // ========== Init ==========
 // Keep everyday setup compact while preserving existing advanced controls.
-$('tab-settings').addEventListener('input', () => { formDirty=true; updateProxyPreview(); });
+$('tab-settings').addEventListener('input', event => {
+  // Search/filter and profile switching do not edit the current configuration.
+  if(event.target.closest('#app-picker') || event.target.id==='profile-select')return;
+  formDirty=true;updateProxyPreview();
+});
 const connectionCard=$('cfg-proto').closest('.card');
 const networkCard=$('cfg-dns').closest('.card');
 const bypassCard=$('bypass-list').closest('.card');
@@ -664,21 +669,36 @@ const scope=document.createElement('section');scope.className='card';
 scope.innerHTML='<h2 style="font-size:16px;margin-bottom:12px">代理范围</h2>'+
  '<select id="route-mode" aria-label="代理范围"><option value="off">仅运行引擎（不分流）</option><option value="selected">仅选中的 App</option><option value="all">全部手机流量（排除 root）</option></select>'+
  '<p id="routing-state" style="margin:12px 0;color:var(--green)" role="status">正在读取分流状态</p>'+
- '<div id="app-picker"><input id="app-search" placeholder="搜索应用包名" aria-label="搜索应用包名" style="width:100%;margin-bottom:10px"><div id="app-list" style="max-height:260px;overflow:auto">正在加载应用…</div></div>'+
+ '<div id="app-picker"><input id="app-search" placeholder="搜索应用名或包名" aria-label="搜索应用名或包名" style="width:100%;margin-bottom:10px">'+
+ '<div class="row" style="margin-bottom:8px"><button type="button" class="btn btn-secondary" id="app-select-visible">全选搜索结果</button><button type="button" class="btn btn-secondary" id="app-deselect-visible">取消搜索结果</button><label class="row"><input id="app-only-selected" type="checkbox">仅看已选</label><span id="app-selected-count" style="color:var(--muted);font-size:12px">已选 0 个</span></div>'+
+ '<div id="app-list" style="max-height:260px;overflow:auto">正在加载应用…</div></div>'+
  '<p style="font-size:12px;color:var(--muted);line-height:1.8;margin-top:12px">不使用 Android VPN 服务。选择后点击“保存并启动”应用。应用按包名列出，共享 UID 的应用会一起分流；目前支持主用户。<br>HTTP 抓包模式阻止被选范围内的 IPv6 与非 DNS UDP（包括 QUIC），不支持的协议可能无法联网。选中模式的系统代发 DNS 可能直连。全部模式不包含 root 和热点转发流量。</p>';
 connectionCard.after(scope);
 $('route-mode').onchange=()=>{formDirty=true;renderApps()};
 $('app-search').oninput=renderApps;
+$('app-only-selected').onchange=renderApps;
+$('app-select-visible').onclick=()=>{setMatchingSelection(selectedPackages,matchingApps(),true);formDirty=true;renderApps()};
+$('app-deselect-visible').onclick=()=>{setMatchingSelection(selectedPackages,matchingApps(),false);formDirty=true;renderApps()};
+function matchingApps(){
+  const known=new Set(appEntries.map(a=>a.package));
+  const missing=[...selectedPackages].filter(p=>!known.has(p)).map(p=>({package:p,label:'未安装或不在主用户',uid:'—'}));
+  return filterAppEntries([...appEntries,...missing],$('app-search').value,$('app-only-selected').checked,selectedPackages);
+}
 function renderApps(){
   $('app-picker').style.display=$('route-mode').value==='selected'?'block':'none';
   const list=$('app-list');list.replaceChildren();
-  const query=$('app-search').value.toLowerCase();
-  for(const app of appEntries.filter(a=>a.package.toLowerCase().includes(query))){
+  const matches=matchingApps();
+  $('app-selected-count').textContent='已选 '+selectedPackages.size+' 个 · 当前显示 '+matches.length+' 个';
+  $('app-select-visible').disabled=!matches.length;
+  $('app-deselect-visible').disabled=!matches.length;
+  for(const app of matches){
     const label=document.createElement('label');label.style.cssText='display:flex;gap:10px;padding:9px 0;font-size:12px;overflow-wrap:anywhere';
     const input=document.createElement('input');input.type='checkbox';input.checked=selectedPackages.has(app.package);
-    input.onchange=()=>{formDirty=true;if(input.checked)selectedPackages.add(app.package);else selectedPackages.delete(app.package)};
-    const text=document.createElement('span');text.textContent=app.package+' · UID '+app.uid;
-    label.append(input,text);list.append(label);
+    input.onchange=()=>{formDirty=true;if(input.checked)selectedPackages.add(app.package);else selectedPackages.delete(app.package);renderApps()};
+    const text=document.createElement('span');
+    const title=document.createElement('strong');title.textContent=app.label||app.package;
+    const detail=document.createElement('span');detail.style.display='block';detail.textContent=app.package+' · UID '+app.uid;
+    text.append(title,detail);label.append(input,text);list.append(label);
   }
   if(!list.childElementCount)list.textContent='没有匹配的应用';
 }

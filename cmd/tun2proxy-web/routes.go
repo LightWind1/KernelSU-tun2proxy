@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -23,6 +24,7 @@ const routeChain = "T2P_CAPTURE"
 type AppEntry struct {
 	Package string `json:"package"`
 	UID     int    `json:"uid"`
+	Label   string `json:"label,omitempty"`
 }
 type RouteState struct {
 	Boot     string     `json:"boot,omitempty"`
@@ -46,7 +48,7 @@ func appsList() ([]AppEntry, error) {
 		}
 		uid, e := strconv.Atoi(strings.TrimPrefix(fields[1], "uid:"))
 		if e == nil && uid >= 10000 && uid < 100000 {
-			apps = append(apps, AppEntry{strings.TrimPrefix(fields[0], "package:"), uid})
+			apps = append(apps, AppEntry{Package: strings.TrimPrefix(fields[0], "package:"), UID: uid})
 		}
 	}
 	sort.Slice(apps, func(i, j int) bool { return apps[i].Package < apps[j].Package })
@@ -58,7 +60,38 @@ func apiApps(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, err.Error())
 		return
 	}
+	// Labels are only for the UI; routing keeps using the package/UID list
+	// above, even when this optional Android framework helper is unavailable.
+	labels := appLabels()
+	for i := range apps {
+		apps[i].Label = labels[apps[i].Package]
+	}
 	writeJSON(w, 200, apps)
+}
+func parseAppLabels(out []byte) map[string]string {
+	labels := make(map[string]string)
+	for _, line := range strings.Split(string(out), "\n") {
+		parts := strings.SplitN(strings.TrimRight(line, "\r"), "\t", 2)
+		if len(parts) != 2 || parts[0] == "" {
+			continue
+		}
+		label := strings.TrimSpace(parts[1])
+		if label != "" {
+			labels[parts[0]] = label
+		}
+	}
+	return labels
+}
+func appLabels() map[string]string {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "app_process", "/system/bin", "AppLabels")
+	cmd.Env = append(os.Environ(), "CLASSPATH="+filepath.Join(modDir, "system", "framework", "app-labels.jar"))
+	out, err := cmd.Output()
+	if err != nil {
+		return map[string]string{}
+	}
+	return parseAppLabels(out)
 }
 func routeStatePath() string { return filepath.Join(runDir, "routes.json") }
 func readRoutes() RouteState {
