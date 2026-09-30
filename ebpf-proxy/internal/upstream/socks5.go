@@ -22,7 +22,11 @@ type SOCKS5 struct {
 func (s SOCKS5) negotiate(ctx context.Context) (net.Conn, error) {
 	c, e := (&net.Dialer{Timeout: s.Timeout}).DialContext(ctx, "tcp", s.Address)
 	if e != nil {
-		return nil, errors.New("upstream TCP connection failed")
+		// Retain errno/timeout identity without dumping the endpoint or auth.
+		if op, ok := e.(*net.OpError); ok {
+			e = op.Err
+		}
+		return nil, fmt.Errorf("upstream TCP connection failed: %w", e)
 	}
 	success := false
 	defer func() {
