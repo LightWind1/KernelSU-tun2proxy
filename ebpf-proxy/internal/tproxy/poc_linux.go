@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
@@ -79,14 +80,17 @@ func pocIsolated(failAfter int) (r PoCReport, err error) {
 	if tcp, ok := listener.(*net.TCPListener); ok {
 		_ = tcp.SetDeadline(time.Now().Add(12 * time.Second))
 	}
-	var undo [][]string
+	var tx *Transaction
+	rollingBack := false
 	defer func() {
 		r.RollbackOK = true
-		for i := len(undo) - 1; i >= 0; i-- {
-			v := query(undo[i])
-			r.Rollback = append(r.Rollback, v)
-			if v.ExitCode != 0 {
+		rollingBack = true
+		if tx != nil {
+			if e := tx.Teardown(); e != nil {
 				r.RollbackOK = false
+				if err == nil {
+					err = e
+				}
 			}
 		}
 		r.Evidence["after_firewall"] = query([]string{"iptables-save"})
@@ -104,38 +108,36 @@ func pocIsolated(failAfter int) (r PoCReport, err error) {
 			err = fmt.Errorf("isolated rollback failed; namespace destruction still removes all resources")
 		}
 	}()
-	step := func(add, del []string) error {
-		v := query(add)
-		r.Steps = append(r.Steps, v)
-		if v.ExitCode != 0 {
-			return fmt.Errorf("%v: exit=%d %s", add, v.ExitCode, v.Error)
-		}
-		undo = append(undo, del)
-		return nil
+	// Fixture-only main route supplies the pre-OUTPUT route lookup. It never
+	// modifies Android's main table: namespace and empty-state guards run first.
+	steps := []Step{
+		{[]string{"ip", "link", "set", "lo", "up"}, []string{"ip", "link", "set", "lo", "down"}},
+		{[]string{"ip", "addr", "add", "192.0.2.2/32", "dev", "lo"}, []string{"ip", "addr", "del", "192.0.2.2/32", "dev", "lo"}},
+		{[]string{"ip", "route", "add", "198.18.0.1/32", "dev", "lo", "src", "192.0.2.2"}, []string{"ip", "route", "del", "198.18.0.1/32", "dev", "lo"}},
 	}
-	// The main-table host route is ONLY inside this fresh test namespace, not
-	// Android's routing table. It supplies the pre-OUTPUT route lookup.
-	plans := [][2][]string{
-		{{"ip", "link", "set", "lo", "up"}, {"ip", "link", "set", "lo", "down"}},
-		{{"ip", "addr", "add", "192.0.2.2/32", "dev", "lo"}, {"ip", "addr", "del", "192.0.2.2/32", "dev", "lo"}},
-		{{"ip", "route", "add", "198.18.0.1/32", "dev", "lo", "src", "192.0.2.2"}, {"ip", "route", "del", "198.18.0.1/32", "dev", "lo"}},
-		{{"ip", "route", "add", "local", "198.18.0.1/32", "dev", "lo", "table", "38766"}, {"ip", "route", "del", "local", "198.18.0.1/32", "dev", "lo", "table", "38766"}},
-		{{"ip", "rule", "add", "priority", "9001", "fwmark", "0x00400000/0x00400000", "lookup", "38766"}, {"ip", "rule", "del", "priority", "9001", "fwmark", "0x00400000/0x00400000", "lookup", "38766"}},
-		{{"iptables", "-w", "2", "-t", "mangle", "-N", "ATP_POC_PRE"}, {"iptables", "-w", "2", "-t", "mangle", "-X", "ATP_POC_PRE"}},
-		{{"iptables", "-w", "2", "-t", "mangle", "-A", "ATP_POC_PRE", "-p", "tcp", "-d", "198.18.0.1", "--dport", "443", "-m", "mark", "--mark", "0x00400000/0x00400000", "-j", "TPROXY", "--on-port", "18080", "--tproxy-mark", "0x00400000/0x00400000"}, {"iptables", "-w", "2", "-t", "mangle", "-F", "ATP_POC_PRE"}},
-		{{"iptables", "-w", "2", "-t", "mangle", "-I", "PREROUTING", "1", "-p", "tcp", "-j", "ATP_POC_PRE"}, {"iptables", "-w", "2", "-t", "mangle", "-D", "PREROUTING", "-p", "tcp", "-j", "ATP_POC_PRE"}},
-		{{"iptables", "-w", "2", "-t", "mangle", "-N", "ATP_POC_OUT"}, {"iptables", "-w", "2", "-t", "mangle", "-X", "ATP_POC_OUT"}},
-		{{"iptables", "-w", "2", "-t", "mangle", "-A", "ATP_POC_OUT", "-p", "tcp", "-d", "198.18.0.1", "--dport", "443", "-j", "MARK", "--set-xmark", "0x00400000/0x00400000"}, {"iptables", "-w", "2", "-t", "mangle", "-F", "ATP_POC_OUT"}},
-		// Interception is enabled last; rollback disables it first.
-		{{"iptables", "-w", "2", "-t", "mangle", "-I", "OUTPUT", "1", "-p", "tcp", "-j", "ATP_POC_OUT"}, {"iptables", "-w", "2", "-t", "mangle", "-D", "OUTPUT", "-p", "tcp", "-j", "ATP_POC_OUT"}},
+	planned, e := (IPv4DestinationPlan{
+		Destination: netip.MustParseAddrPort("198.18.0.1:443"), ListenerPort: 18080,
+		Mark: 0x00400000, Mask: 0x00400000, Table: 38766, Priority: 9001, Prefix: "ATP_POC",
+	}).Steps()
+	if e != nil {
+		return r, e
 	}
-	for i, p := range plans {
-		if err = step(p[0], p[1]); err != nil {
-			return
+	steps = append(steps, planned...)
+	adds := map[string]bool{}
+	for _, s := range steps {
+		adds[strings.Join(s.Add, "\x00")] = true
+	}
+	tx = NewTransaction(steps, func(args []string) Result {
+		v := query(args)
+		if !rollingBack && adds[strings.Join(args, "\x00")] {
+			r.Steps = append(r.Steps, v)
+		} else {
+			r.Rollback = append(r.Rollback, v)
 		}
-		if failAfter == i+1 {
-			return r, fmt.Errorf("injected setup failure after step %d", failAfter)
-		}
+		return v
+	})
+	if err = tx.setup(failAfter); err != nil {
+		return
 	}
 	clientErr := make(chan error, 1)
 	go func() {

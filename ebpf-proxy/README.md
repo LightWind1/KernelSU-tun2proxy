@@ -177,3 +177,28 @@ and relay correctness separately from the earlier nonlocal policy-routing PoC.
 It does not prove routing of a real Android App through an external MITM server.
 Mark safety, live-network setup, crash watchdog, IPv6 traffic and integration
 remain gated. UDP/DNS are not intercepted; HTTP/3 may bypass interception.
+
+### Transactional destination-only rule planner
+
+`internal/tproxy/plan.go` generates validated IPv4 destination-only test rules;
+`transaction.go` executes trusted argv steps, retaining ownership in memory.
+The nonlocal isolated PoC now uses these components. Interception is enabled
+last and disabled first. Removal uses exact `-D` rules rather than chain flush.
+Failed removal stops dependency cleanup and preserves the outstanding steps
+for retry. Setup after a failed stop is rejected, not reported as ready.
+Repeated setup/teardown on the same controller is idempotent and serialized.
+Pre-existing resources are never adopted after a failed create.
+
+Privileged `TestPrivilegedTransactions` checks three repeated lifecycle cycles,
+failure after each of eight rule-plan steps, and preservation of an unrelated
+same-name chain, all inside a private network namespace. Unit tests additionally
+cover failed disable/retry, partial rollback, concurrent lifecycle calls and
+invalid addresses/prefixes/marks/table/priority. Android verification details are
+in the parent repository's `docs/TPROXY-TRANSACTIONS.md` (not a build dependency).
+
+This is **not** a production recovery controller. Ownership is not persisted,
+command timeout can leave an uncertain outcome, and another administrator can
+alter resources externally. A durable intent journal, namespace-bound ownership
+verification, preflight conflict checks and an independent watchdog are still
+required before live setup/repair is exposed. Nothing here claims mark safety
+on a vendor ROM or SIGKILL recovery. No new WebUI or module backend is enabled.
