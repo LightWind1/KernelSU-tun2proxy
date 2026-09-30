@@ -27,6 +27,9 @@ func execute() error {
 		return fmt.Errorf("usage: ebpf-proxy run|poc|probe-upstream|check --config FILE; probe-kernel; verify-object --object FILE; check-cgroup --object FILE --cgroup DIR; status|stop|uid|debug --runtime-dir DIR")
 	}
 	command := os.Args[1]
+	if command == "tproxy" {
+		return tproxyCommand(os.Args[2:])
+	}
 	if command == "probe-kernel" {
 		return probeKernel()
 	}
