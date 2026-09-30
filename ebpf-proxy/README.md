@@ -139,3 +139,41 @@ case runs in a newly created network namespace. Host-namespace refusal is tested
 without performing writes. This is NOT yet an App UID, direct-relay or SOCKS5
 MITM acceptance result. No production setup/repair API is exposed prematurely.
 UDP/DNS/QUIC remain untouched. Existing TUN/eBPF defaults and tests remain intact.
+
+### Direct relay and UID/SOCKS5 fixtures
+
+```sh
+unshare -n ebpf-proxy tproxy relay-isolated
+unshare -n ebpf-proxy tproxy socks5-isolated
+ebpf-proxy tproxy test-upstream --address 192.0.2.10:1080
+# Optional explicit HTTP diagnostic; this is NOT intercepted traffic:
+ebpf-proxy tproxy test-upstream --address 192.0.2.10:1080 \
+  --http-destination example.com:80 --http-host example.com
+```
+
+The two fixtures reject the host namespace and existing routes/firewall/policy.
+Root-owned executable files need mode 0755 so child UID 41001/41002 can execute
+them; no credential-bearing files or writable directories are shared. Root is
+deliberately also selected in the fixture to prove that daemon UID bypass wins.
+Both child UIDs connect simultaneously to the same destination, with distinct
+64 KiB opaque payloads and half-close. Only UID 41001 must enter the relay.
+Target UID UDP/443 passes a separate 4096-byte datagram without interception.
+Upstream IP/port bypass and new direct connections after stopping the relay are
+verified. Stop removes the OUTPUT entrance before cancelling the relay.
+On Android with procfs hidepid, the root launcher passes a verified namespace
+descriptor to workers so they need not read /proc/1; no policy is relaxed.
+
+The direct connector and SOCKS5 share the same generic Connector interface.
+Fixture SOCKS5 protocol implementation is isolated in `internal/testutil`, not
+the TPROXY backend; it only forwards one exact test destination. Relay and BPF
+code do not parse HTTP. The optional HTTP parser is strictly a CLI diagnostic
+client, not a proxy data path. Only status and response size are emitted, not
+payload. The address flag is transient, not a second persisted upstream config;
+authenticated checks continue to use `probe-upstream --config` with the existing
+generic private config.
+
+The local original-destination fixture intentionally exercises UID separation
+and relay correctness separately from the earlier nonlocal policy-routing PoC.
+It does not prove routing of a real Android App through an external MITM server.
+Mark safety, live-network setup, crash watchdog, IPv6 traffic and integration
+remain gated. UDP/DNS are not intercepted; HTTP/3 may bypass interception.

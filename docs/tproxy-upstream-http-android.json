@@ -1,0 +1,10 @@
+{
+  "address": "192.168.30.102:8083",
+  "authentication": "no-auth probe; use existing probe-upstream --config for credentials",
+  "http_status": 200,
+  "network_rules_changed": false,
+  "path": "root diagnostic -> SOCKS5 (no TPROXY)",
+  "response_bytes": 713,
+  "socks5_ready": true,
+  "tcp_reachable": true
+}

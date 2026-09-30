@@ -175,3 +175,8 @@ Phase 0 commit: `8029ab5` (`feat: add read-only tproxy capability probe`).
 Phase A commit can be identified by message
 `feat: verify isolated ipv4 tproxy interception and rollback`.
 No release ZIP was repacked and no version was incremented in this investigation.
+
+Follow-up: [direct/UID/SOCKS5 phase report](TPROXY-RELAY-UID.md) records the
+subsequent completed isolated relay/UID/bypass/UDP tests and real upstream HTTP
+diagnostic. Live App/HTTPS interception and automatic mark selection remain
+unverified and disabled.
