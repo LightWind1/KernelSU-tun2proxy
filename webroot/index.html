@@ -141,6 +141,16 @@ input,select{background:rgba(5,5,18,.52);color:var(--text);border:1px solid rgba
 
 <!-- Settings Tab -->
 <div id="tab-settings">
+  <section class="card">
+    <div style="font-weight:600;margin-bottom:10px">代理后端</div>
+    <div class="grid">
+      <div class="field"><label for="cfg-backend">数据路径</label><select id="cfg-backend" onchange="onConfigChange()"><option value="tun">TUN / tun2proxy（兼容默认）</option><option value="ebpf">eBPF redirect（实验性 TCP）</option></select></div>
+      <div class="field"><label for="cfg-ebpf-port">eBPF 本机重定向端口</label><input id="cfg-ebpf-port" type="number" min="1" max="65535" value="18080" onchange="onConfigChange()"></div>
+    </div>
+    <p style="color:var(--muted);font-size:12px;line-height:1.8">eBPF 不创建 TUN，不启动 tun2proxy；只代理 TCP，DNS 和 UDP 直通。复用下方代理配置，但必须选择真正的 SOCKS5 端口，不能将 HTTP CONNECT 自动视作 SOCKS5。TUN 的 DNS/UDP 设置保留，切回 TUN 后继续生效。运行中请先停止再切换。</p>
+    <div class="row"><button class="btn btn-secondary" onclick="checkEBPF('check')">检查 eBPF 能力</button><button class="btn btn-secondary" onclick="checkEBPF('upstream')">测试已保存的 SOCKS5 上游</button></div>
+    <pre class="check-out" id="ebpf-state">eBPF 未启动</pre>
+  </section>
   <div class="card">
     <div style="font-weight:600;margin-bottom:10px">电脑连接配置</div>
     <div class="row">
@@ -268,7 +278,7 @@ input,select{background:rgba(5,5,18,.52);color:var(--text);border:1px solid rgba
 <div id="tab-logs" style="display:none">
   <div class="row" style="margin-bottom:8px">
     <button class="btn btn-secondary" onclick="loadLogs()">Refresh</button>
-    <select id="log-category" onchange="loadLogs()"><option value="proxy">tun2proxy</option><option value="certificate">证书 / Yakit</option></select>
+    <select id="log-category" onchange="loadLogs()"><option value="proxy">tun2proxy</option><option value="ebpf">eBPF</option><option value="certificate">证书 / Yakit</option></select>
     <select id="log-lines" onchange="loadLogs()">
       <option value="50">50 lines</option>
       <option value="100">100 lines</option>
@@ -281,6 +291,7 @@ input,select{background:rgba(5,5,18,.52);color:var(--text);border:1px solid rgba
 
 <!-- Diagnose Tab -->
 <div id="tab-diagnose" style="display:none">
+  <section class="card"><h2>eBPF diagnostics</h2><button class="btn btn-secondary" onclick="checkEBPF('check')">检查当前设备</button><button class="btn btn-secondary" onclick="checkEBPF('upstream')">测试 SOCKS5 上游</button><pre class="check-out" id="ebpf-diagnostics">尚未检测。检查使用已保存的连接配置。</pre></section>
   <button class="btn btn-check" id="check-btn" onclick="runCheck()">Run Diagnostics</button>
   <span class="spin" id="check-spin" style="display:none;margin-left:8px"></span>
   <div class="check-out" id="check-out" style="margin-top:8px">Click "Run Diagnostics" to check the environment...</div>
@@ -291,6 +302,7 @@ input,select{background:rgba(5,5,18,.52);color:var(--text);border:1px solid rgba
 <div class="toast" id="toast"></div>
 
 <script src="app-picker.js"></script>
+<script src="backend.js"></script>
 <script>
 // ========== State ==========
 // Follow the actual Web port instead of contacting another module on :8080.
@@ -330,8 +342,9 @@ async function loadStatus(){
     renderStatus();
     if(!formDirty) renderConfig();
     renderStats();
+    $('ebpf-state').textContent = formatEBPFStatus(d.ebpf || {});
     const routing=d.routing || {};
-    $('routing-state').textContent = routing.mode ? ('分流已生效：'+(routing.mode==='all'?'全部非 root 流量':'选中 App')) : '分流未启用';
+    $('routing-state').textContent = d.backend==='ebpf' && d.running ? ('eBPF TCP 范围：'+(config.route_mode==='all'?'全部非 bypass UID':config.route_mode==='selected'?'选中 App':'仅运行引擎')) : routing.mode ? ('分流已生效：'+(routing.mode==='all'?'全部非 root 流量':'选中 App')) : '分流未启用';
   }catch(e){
     // Server might not be running
     $('status-label').textContent = 'DISCONNECTED';
@@ -384,7 +397,7 @@ async function startProxy(){
       toast('启动失败：'+(d.output||d.error||'引擎未运行，请查看运行日志'));
       return;
     }
-    toast('tun2proxy started');
+    toast('代理后端已启动');
     formDirty = false;
     loadProfiles();
     loadStatus();
@@ -479,7 +492,7 @@ function readConfigFromForm(){
     if(pass) proxyURL += ':'+encodeURIComponent(pass);
     proxyURL += '@';
   }
-  proxyURL += host+':'+port;
+  proxyURL += (host.includes(':') && !host.startsWith('[') ? '['+host+']' : host)+':'+port;
 
   // Collect bypass IPs
   const bypassIPs = [];
@@ -489,6 +502,8 @@ function readConfigFromForm(){
   });
 
   return {
+    backend: $('cfg-backend').value,
+    ebpf_port: Number($('cfg-ebpf-port').value),
     route_mode: $('route-mode').value,
     app_packages: [...selectedPackages],
     version: '1.0',
@@ -505,19 +520,21 @@ function readConfigFromForm(){
 
 function renderConfig(){
   if(!config || !config.proxy_url) return;
+  $('cfg-backend').value = config.backend || 'tun';
+  $('cfg-ebpf-port').value = config.ebpf_port || 18080;
   $('route-mode').value = config.route_mode || 'off';
   selectedPackages = new Set(config.app_packages || []);
   renderApps();
   // Populate form fields from loaded config
   try{
     // Parse proxy_url
-    const urlMatch = config.proxy_url.match(/^(socks5h?|http):\/\/(?:([^:@]+)(?::([^@]+))?@)?([^:]+):(\d+)$/);
-    if(urlMatch){
-      $('cfg-proto').value = urlMatch[1];
-      $('cfg-user').value = urlMatch[2] ? decodeURIComponent(urlMatch[2]) : '';
-      $('cfg-pass').value = urlMatch[3] ? decodeURIComponent(urlMatch[3]) : '';
-      $('cfg-host').value = urlMatch[4];
-      $('cfg-port').value = urlMatch[5];
+    const u = new URL(config.proxy_url);
+    if(['http:','socks5:','socks5h:'].includes(u.protocol)){
+      $('cfg-proto').value = u.protocol.slice(0,-1);
+      $('cfg-user').value = decodeURIComponent(u.username);
+      $('cfg-pass').value = decodeURIComponent(u.password);
+      $('cfg-host').value = u.hostname.replace(/^\[|\]$/g,'');
+      $('cfg-port').value = u.port;
     }
   }catch(e){}
   $('cfg-dns').value = config.dns_mode || 'virtual';
@@ -538,6 +555,8 @@ function onConfigChange(){
 }
 
 function validateConnection(){
+  if($('cfg-backend').value==='ebpf' && $('cfg-proto').value==='http'){toast('eBPF 需要真正的 SOCKS5 上游。请先确认电脑 SOCKS5 监听端口。');return false}
+  const ep=Number($('cfg-ebpf-port').value);if(!Number.isInteger(ep)||ep<1||ep>65535){toast('重定向端口应为 1–65535');return false}
   if($('route-mode').value==='selected' && selectedPackages.size===0){toast('请至少选择一个 App');return false}
   const host=$('cfg-host').value.trim(), port=Number($('cfg-port').value);
   if(!host || host==='0.0.0.0' || /[\s/@]/.test(host)){
@@ -629,10 +648,10 @@ function renderStatus(){
 }
 
 function renderStats(){
-  $('stat-tun').textContent = status.tun_available ? 'Available' : 'Not Found';
-  $('stat-tun').style.color = status.tun_available ? 'var(--green)' : 'var(--red)';
+  $('stat-tun').textContent = status.backend==='ebpf' ? 'eBPF / 无需 TUN' : status.tun_available ? 'Available' : 'Not Found';
+  $('stat-tun').style.color = status.backend==='ebpf' ? 'var(--muted)' : status.tun_available ? 'var(--green)' : 'var(--red)';
   $('stat-proxy').textContent = (config.proxy_url || '-').split('@').pop() || '-';
-  $('stat-dns').textContent = config.dns_mode || '-';
+  $('stat-dns').textContent = status.backend==='ebpf' ? 'Direct (UDP pass)' : config.dns_mode || '-';
   $('stat-autostart').textContent = config.enabled ? 'ON' : 'OFF';
   $('stat-autostart').style.color = config.enabled ? 'var(--green)' : 'var(--muted)';
 }

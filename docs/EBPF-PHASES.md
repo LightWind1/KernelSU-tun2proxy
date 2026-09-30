@@ -119,3 +119,28 @@ An isolated module staging directory on Android tested actual controller start:
 exclusive root netd hook ID 23 / flags 0 was reported before process launch.
 Existing installed config, TUN routes, system programs and certificate state were
 untouched. This is safe rejection evidence, not successful Android redirect.
+
+## Phase 6 — WebUI
+
+Added backend selection and configurable loopback port, program/daemon/listener/
+upstream/UID/flow/counter status, capability and SOCKS5 checks, eBPF log category,
+and a section in existing diagnostics. HTTP configuration is retained unchanged;
+capability checking does not require assuming an HTTP port speaks SOCKS5.
+Node tests validate actual form serialization (IPv6/auth/App selection/TUN field
+preservation), syntax, defaults and state formatting. Existing App picker tests
+pass. Sensitive eBPF diagnostics reuse the local-only, same-origin HTTP guard.
+
+## Phase 7 status
+
+Core Linux tests passed lease expiry, daemon UID bypass, CIDR bypass and UDP
+pass; forced subprocess SIGKILL removed all three native links. Android runtime
+directory lock/security test passed. External Yakit, Android transparent TCP,
+HTTP2/WebSocket end-to-end, network transitions, module disable/enable and device
+reboot remain unverified. No broad compatibility or full acceptance claim.
+
+TUN fallback was started and stopped through the new controller in an isolated
+Android module staging directory (route_mode off, ep-fallback interface). Native
+engine PID 22550 was verified to originate from that staging path; stop removed
+the temporary interface. No capture rules were installed. External upstream
+192.168.30.102:8083 still failed TCP connect on this test date. Existing installed
+module/config were not replaced; no device reboot was needed.

@@ -8,7 +8,7 @@ MODDIR="${TUN2PROXY_MODDIR:-${0%/*/*/*}}"
 CONFIG="${TUN2PROXY_CONFIG:-/data/adb/tun2proxy/config.json}"
 DATA_DIR="${TUN2PROXY_DATA:-/data/adb/tun2proxy}"
 LOG_DIR="$DATA_DIR/logs"
-RUN_DIR="$DATA_DIR/run"
+RUN_DIR="${TUN2PROXY_RUN_DIR:-$DATA_DIR/run}"
 TUN2PROXY_BIN="$MODDIR/system/bin/tun2proxy"
 TUN2PROXY_LAUNCHER="$MODDIR/system/bin/tun2proxy-tun-launcher"
 

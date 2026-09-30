@@ -180,7 +180,7 @@ func writeEBPFConfig(c Config) (string, error) {
 }
 func legacyCtl(action string) (string, error) {
 	cmd := exec.Command("sh", ctlScript, action)
-	cmd.Env = append(os.Environ(), "TUN2PROXY_LEGACY_CTL=1", "TUN2PROXY_MODDIR="+modDir, "TUN2PROXY_CONFIG="+configFile, "TUN2PROXY_RUN_DIR="+runDir)
+	cmd.Env = append(os.Environ(), "TUN2PROXY_LEGACY_CTL=1", "TUN2PROXY_MODDIR="+modDir, "TUN2PROXY_CONFIG="+configFile, "TUN2PROXY_RUN_DIR="+runDir, "TUN2PROXY_DATA="+filepath.Dir(runDir), "TUN2PROXY_LOG="+filepath.Join(filepath.Dir(runDir), "logs", "tun2proxy.log"))
 	b, e := cmd.CombinedOutput()
 	return string(b), e
 }
@@ -201,17 +201,24 @@ func backendAction(action string) (string, error) {
 		return "", e
 	}
 	stop := func() (string, error) {
-		if running, _ := ebpfStatus()["running"].(bool); running {
+		s := ebpfStatus()
+		if loaded, _ := s["programs_loaded"].(bool); loaded {
+			pid, _ := s["pid"].(float64)
 			b, e := ebpfCommand("stop", "--runtime-dir", ebpfRuntime())
 			if e != nil {
 				return string(b), e
 			}
 			deadline := time.Now().Add(10 * time.Second)
 			for time.Now().Before(deadline) {
-				if running, _ := ebpfStatus()["running"].(bool); !running {
+				cmdline, _ := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", int(pid)))
+				if !strings.HasPrefix(string(cmdline), ebpfBinary()+"\x00") {
 					break
 				}
 				time.Sleep(100 * time.Millisecond)
+			}
+			cmdline, _ := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", int(pid)))
+			if strings.HasPrefix(string(cmdline), ebpfBinary()+"\x00") {
+				return "", errors.New("eBPF daemon has not finished stopping")
 			}
 		}
 		return legacyCtl("stop")
@@ -326,6 +333,19 @@ func apiEBPF(w http.ResponseWriter, r *http.Request) {
 	}
 	lifecycleMu.Lock()
 	defer lifecycleMu.Unlock()
+	if req.Action == "check" {
+		b, e := ebpfCommand("check-cgroup", "--object", filepath.Join(modDir, "system", "bpf", "redirect.bpf.o"), "--cgroup", "/sys/fs/cgroup")
+		if e != nil {
+			msg := strings.TrimSpace(string(b))
+			if msg == "" {
+				msg = "eBPF binary unavailable or preflight timed out"
+			}
+			writeError(w, 400, msg)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true, "output": strings.TrimSpace(string(b))})
+		return
+	}
 	c, e := loadConfig()
 	if e != nil {
 		writeError(w, 500, e.Error())
@@ -345,7 +365,11 @@ func apiEBPF(w http.ResponseWriter, r *http.Request) {
 	}
 	b, e := ebpfCommand(command, "--config", path)
 	if e != nil {
-		writeError(w, 400, strings.TrimSpace(string(b)))
+		msg := strings.TrimSpace(string(b))
+		if msg == "" {
+			msg = "eBPF binary unavailable or check timed out"
+		}
+		writeError(w, 400, msg)
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true, "output": strings.TrimSpace(string(b))})

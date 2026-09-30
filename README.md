@@ -101,6 +101,38 @@ native TLS、国密 TLS 等可能继续拒绝代理。模块不承诺绕过这�
 
 ## 构建与测试
 
+### 实验性 eBPF TCP 后端
+
+“连接配置 → 代理后端”可选择 TUN / tun2proxy 或 eBPF redirect。旧配置不含
+backend 字段时仍默认 TUN。每台电脑配置保存自己的 backend 和 ebpf_port；
+地址、端口、认证、App 多选和 Bypass 继续复用原配置，不增加第二套上游。
+切换前先停止正在运行的后端。
+
+eBPF 模式只处理 TCP，不使用 VPNService、TUN 或 tun2proxy。需真实 SOCKS5
+上游，不能直接把 HTTP CONNECT 端口当成 SOCKS5。DNS/UDP 直通；TUN 的
+DNS/UDP Gateway 等字段保留，切回 TUN 后继续生效。HTTPS MITM/CA 仍由
+已有证书管理和上游代理完成，不绕过证书绑定。
+
+“检查 eBPF 能力”检查 cgroup 冲突并实际加载 verifier；不会覆盖其他程序。
+“测试已保存的 SOCKS5 上游”只测试已保存地址的 SOCKS5 greeting/认证。
+状态显示程序、daemon、listener、上游、UID 数和计数器；日志可选择 eBPF。
+检测接口与证书管理一样只允许手机 localhost / ADB 转发访问。
+
+**当前实测手机 Android 15 / kernel 5.10.236 上 netd 独占 connect4/6，
+因此 eBPF 后端会明确拒绝启动。不要将此版本视为该手机的透明代理验收通过。**
+不会为了实验卸载 netd BPF 程序或放宽 SELinux；请继续使用兼容 TUN 后端。
+Linux 6.6 隔离 cgroup 已验证 TCP IPv4/IPv6、UID 动态策略、1000 短连接、
+绕过、UDP pass、心跳 fail-open 和 SIGKILL 自动 detach。尚未完成多 ROM、
+移动网络、重启以及外部 Yakit HTTPS/HTTP2/插件验收。
+
+独立核心及 CLI：[ebpf-proxy/README.md](ebpf-proxy/README.md)。
+构建 Android runtime：`./build-ebpf.ps1 -Go <go.exe>`，依赖 Android NDK clang。
+核心目录可复制为独立仓库，无 WebUI / KernelSU / Yakit 依赖。
+详细阶段及设备证据：[docs/EBPF-PHASES.md](docs/EBPF-PHASES.md)。
+eCapture 仅作工程参考，没有导入其 runtime、TLS uprobe 或抓包架构。
+
+### 原有后端与证书测试
+
 Go 后端不引入额外通用运行时，证书辅助使用系统 ART 运行约2 KiB DEX。
 不依赖手机的 curl、wget、openssl。
 

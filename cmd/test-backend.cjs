@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const {formatEBPFStatus}=require('../webroot/backend.js');
+assert.match(formatEBPFStatus({}),/Not loaded/);
+const text=formatEBPFStatus({running:true,programs_loaded:true,pid:123,listener:'127.0.0.1:18080',ipv6:true,upstream:'192.0.2.1:1080',target_uids:[10001,10002],policy_mode:'uid_allowlist',flow_map_entries:0,counters:{redirect:5}});
+assert.match(text,/Loaded/);assert.match(text,/target UID count: 2/);assert.match(text,/192.0.2.1:1080/);
+const html=fs.readFileSync(require.resolve('../webroot/index.html'),'utf8');for(const id of ['cfg-backend','cfg-ebpf-port','ebpf-state','ebpf-diagnostics'])assert.ok(html.includes('id="'+id+'"'));
+const inline=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(x=>x[1]);for(const js of inline)new vm.Script(js);new vm.Script(fs.readFileSync(require.resolve('../webroot/backend.js'),'utf8'));
+assert.match(html,/config.backend \|\| 'tun'/);assert.match(html,/backend: \$\('cfg-backend'\).value/);
+console.log('backend UI syntax/state/default tests passed');
+const inputs={};const get=id=>inputs[id]||(inputs[id]={value:'',checked:false});
+const context={URL,Number,parseInt,document:{querySelectorAll:()=>[]},$:get,selectedPackages:new Set(['test.app'])};vm.createContext(context);
+vm.runInContext(html.slice(html.indexOf('function readConfigFromForm(){'),html.indexOf('function renderConfig(){')),context);
+for(const [id,value] of Object.entries({'cfg-proto':'socks5','cfg-host':'::1','cfg-port':'1080','cfg-user':'user','cfg-pass':'p@ss','cfg-backend':'ebpf','cfg-ebpf-port':'18080','route-mode':'selected','cfg-tun':'tun7','cfg-dns':'virtual','cfg-tcp-timeout':'31','cfg-udp-timeout':'32'}))get(id).value=value;
+const cfg=vm.runInContext('readConfigFromForm()',context);assert.equal(cfg.backend,'ebpf');assert.equal(cfg.ebpf_port,18080);assert.equal(cfg.proxy_url,'socks5://user:p%40ss@[::1]:1080');assert.equal(cfg.dns_mode,'virtual');assert.equal(cfg.tun_name,'tun7');assert.deepEqual(Array.from(cfg.app_packages),['test.app']);
+console.log('actual form adapter/IPv6/auth/network preservation tests passed');

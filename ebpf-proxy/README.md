@@ -94,7 +94,9 @@ IPv6 listener is ::1 at the same port. Upstream must actually speak SOCKS5;
 an HTTP CONNECT port is not assumed compatible. DNS and all UDP remain native.
 No TLS hooks, payload logging, capture or pinning bypass. Dynamic allowlist
 commands have no effect in all_non_bypass mode. Map capacity is 16384 flows;
-exhaustion/metadata allocation failures pass the connection before redirect.
+Socket-storage allocation failure passes the connection before redirect. A later
+tuple publication/lookup failure rejects that single stream rather than guessing
+its destination. LRU eviction can also fail a delayed accept under extreme load.
 
 Extraction: copy this directory to a new repository and run the same builds;
 there are no parent-relative source dependencies. Production module integration,

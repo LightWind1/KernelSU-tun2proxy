@@ -137,6 +137,7 @@ func apiProfiles(w http.ResponseWriter, r *http.Request) {
 		active, _ := profileByID(p, p.ActiveID)
 		cfg := active.Config
 		cfg.ProxyURL = "http://127.0.0.1:8083"
+		cfg.Backend = "tun" // Fresh HTTP profile retains the compatible default backend.
 		p.Profiles = append(p.Profiles, ConnectionProfile{ID: newProfileID(), Name: a.Name, Config: cfg})
 	case "clone":
 		if a.Name == "" || len([]rune(a.Name)) > 64 {

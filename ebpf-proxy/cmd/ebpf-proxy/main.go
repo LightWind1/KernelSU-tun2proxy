@@ -34,12 +34,19 @@ func execute() error {
 	path := flags.String("config", "", "generic config JSON")
 	destination := flags.String("destination", "", "fixed destination (poc only)")
 	object := flags.String("object", "", "BPF object for verifier check")
+	cgroup := flags.String("cgroup", "/sys/fs/cgroup", "target cgroup v2 directory")
 	runtimeDir := flags.String("runtime-dir", "", "private daemon runtime directory")
 	if e := flags.Parse(os.Args[2:]); e != nil {
 		return e
 	}
 	if command == "verify-object" {
 		return verifyObject(*object)
+	}
+	if command == "check-cgroup" {
+		c := config.Config{IPv6: true}
+		c.BPF.Object = *object
+		c.BPF.Cgroup = *cgroup
+		return checkNative(c)
 	}
 	if command == "status" || command == "stop" || command == "uid" || command == "debug" {
 		return controlNative(*runtimeDir, command, flags.Args())
