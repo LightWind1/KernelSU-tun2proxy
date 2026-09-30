@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Endpoint struct {
@@ -84,6 +85,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Upstream.Host == "" || c.Upstream.Port < 1 || c.Upstream.Port > 65535 {
 		return errors.New("invalid upstream endpoint")
+	}
+	if strings.ContainsAny(c.Upstream.Host, " /\\;\r\n\t@?#") {
+		return errors.New("invalid upstream host")
 	}
 	if len(c.Upstream.Username) > 255 || len(c.Upstream.Password) > 255 || (c.Upstream.Password != "" && c.Upstream.Username == "") {
 		return errors.New("invalid upstream authentication")

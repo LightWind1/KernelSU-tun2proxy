@@ -73,3 +73,26 @@ The external saved endpoint failed TCP connect on 2026-09-30, so actual external
 MITM/CA/HTTP2 request-response verification is pending, not claimed passed.
 No module configuration, service or device routing changed in this phase.
 Extraction requires no source changes; Go and optional Android cross-build only.
+
+## Phases 2–4 — native redirect core, dynamic UID and IPv6
+
+Added versioned ABI, connect4/connect6, SK_STORAGE original destination,
+sockops tuple publication, LRU flow map, UID/bypass maps, explicit CIDR bypass,
+monotonic kernel heartbeat lease, native link loader and private Unix CLI.
+Object verifier passed on Android 5.10.236 and Linux 6.6.87.2 (3 programs/7 maps).
+An initial IPv6 modified-context-pointer verifier rejection was corrected using
+explicit UAPI field loads. No kernel BTF is required.
+
+Privileged isolated-cgroup tests on Linux 6.6 passed 1002 redirected TCP streams
+(IPv4 and IPv6), exact SOCKS5 payload relay, 1000 concurrent-batched short
+connections, UID add/del, non-target direct, daemon UID/CIDR bypass, UDP pass,
+disable and heartbeat expiry. Zero upstream/metadata failures or residual flows.
+This is not Android end-to-end evidence.
+
+Real Android probes returned EPERM on additional connect links. Root query
+identified netd program IDs 23/24 with attach flags 0 (exclusive), explaining
+ancestor attach rejection. Sockops native attach succeeded in a disposable
+empty child cgroup. No matching BPF SELinux denial was found. Loader refuses
+foreign-program replacement; no SELinux broadening or default-backend change.
+Current Android transparent acceptance is blocked by netd exclusive attachments.
+External saved proxy TCP reachability also remains unverified/failed.
