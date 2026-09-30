@@ -1,0 +1,404 @@
+{
+  "version": 1,
+  "read_only": true,
+  "network_namespace": "net:[4026532071]",
+  "kernel_config": {
+    "exit_code": 0,
+    "output": "CONFIG_NETFILTER=y\nCONFIG_NETFILTER_XTABLES=y\nCONFIG_NETFILTER_XT_MARK=y\nCONFIG_NETFILTER_XT_MATCH_MARK=y\nCONFIG_NETFILTER_XT_MATCH_OWNER=y\nCONFIG_NETFILTER_XT_MATCH_SOCKET=y\nCONFIG_NETFILTER_XT_TARGET_MARK=y\nCONFIG_NETFILTER_XT_TARGET_TPROXY=y\nCONFIG_IP_ADVANCED_ROUTER=y\nCONFIG_IP_MULTIPLE_TABLES=y\nCONFIG_IPV6=y\nCONFIG_IPV6_MULTIPLE_TABLES=y\n# CONFIG_NF_TABLES is not set\nCONFIG_NFT_TPROXY: not present (not evidence of absence if config is unavailable)\nCONFIG_NFT_SOCKET: not present (not evidence of absence if config is unavailable)\nCONFIG_NFT_MARK: not present (not evidence of absence if config is unavailable)\nCONFIG_NF_TPROXY_IPV4=y\nCONFIG_NF_TPROXY_IPV6=y\nCONFIG_IP_NF_MANGLE=y\nCONFIG_IP6_NF_MANGLE=y",
+    "sha256": "aa19d5a2ad009afb5a8968e8a880790a4657c659041ac15c89e4b7ce6c0a04b6"
+  },
+  "checks": {
+    "kernel": {
+      "command": [
+        "uname",
+        "-a"
+      ],
+      "exit_code": 0,
+      "output": "Linux localhost 5.10.236-android12-9-00003-gfb24cf99ad97-ab14313284 #1 SMP PREEMPT Tue Oct 21 03:03:12 UTC 2025 aarch64 Toybox"
+    },
+    "android": {
+      "command": [
+        "getprop",
+        "ro.build.version.release"
+      ],
+      "exit_code": 0,
+      "output": "15"
+    },
+    "sdk": {
+      "command": [
+        "getprop",
+        "ro.build.version.sdk"
+      ],
+      "exit_code": 0,
+      "output": "35"
+    },
+    "identity": {
+      "command": [
+        "id"
+      ],
+      "exit_code": 0,
+      "output": "uid=0(root) gid=0(root) groups=0(root) context=u:r:ksu:s0"
+    },
+    "selinux": {
+      "command": [
+        "getenforce"
+      ],
+      "exit_code": 0,
+      "output": "Enforcing"
+    },
+    "iptables": {
+      "command": [
+        "iptables",
+        "--version"
+      ],
+      "exit_code": 0,
+      "output": "iptables v1.8.10 (legacy)"
+    },
+    "ip6tables": {
+      "command": [
+        "ip6tables",
+        "--version"
+      ],
+      "exit_code": 0,
+      "output": "ip6tables v1.8.10 (legacy)"
+    },
+    "nft": {
+      "command": [
+        "nft",
+        "--version"
+      ],
+      "exit_code": -1,
+      "error": "exec: \"nft\": executable file not found in $PATH"
+    },
+    "tproxy4": {
+      "command": [
+        "iptables",
+        "-j",
+        "TPROXY",
+        "-h"
+      ],
+      "exit_code": 0,
+      "output": "TPROXY target options:\n  --on-port port\t\t    Redirect connection to port, or the original port if 0\n  --on-ip ip\t\t\t    Optionally redirect to the given IP\n  --tproxy-mark value[/mask]\t    Mark packets with the given value/mask"
+    },
+    "tproxy6": {
+      "command": [
+        "ip6tables",
+        "-j",
+        "TPROXY",
+        "-h"
+      ],
+      "exit_code": 0,
+      "output": "TPROXY target options:\n  --on-port port\t\t    Redirect connection to port, or the original port if 0\n  --on-ip ip\t\t\t    Optionally redirect to the given IP\n  --tproxy-mark value[/mask]\t    Mark packets with the given value/mask"
+    },
+    "owner": {
+      "command": [
+        "iptables",
+        "-m",
+        "owner",
+        "-h"
+      ],
+      "exit_code": 0,
+      "output": "owner match options:\n[!] --uid-owner userid[-userid]      Match local UID\n[!] --gid-owner groupid[-groupid]    Match local GID\n[!] --socket-exists                  Match if socket exists\n    --suppl-groups                   Also match supplementary groups set with --gid-owner"
+    },
+    "MARK": {
+      "command": [
+        "iptables",
+        "-j",
+        "MARK",
+        "-h"
+      ],
+      "exit_code": 0,
+      "output": "MARK target options:\n  --set-xmark value[/mask]  Clear bits in mask and XOR value into nfmark\n  --set-mark value[/mask]   Clear bits in mask and OR value into nfmark\n  --and-mark bits           Binary AND the nfmark with bits\n  --or-mark bits            Binary OR the nfmark with bits\n  --xor-mark bits           Binary XOR the nfmark with bits"
+    },
+    "mark": {
+      "command": [
+        "iptables",
+        "-m",
+        "mark",
+        "-h"
+      ],
+      "exit_code": 0,
+      "output": "mark match options:\n[!] --mark value[/mask]    Match nfmark value with optional mask"
+    },
+    "socket": {
+      "command": [
+        "iptables",
+        "-m",
+        "socket",
+        "-h"
+      ],
+      "exit_code": 0,
+      "output": "socket match options:\n  --nowildcard     Do not ignore LISTEN sockets bound on INADDR_ANY\n  --transparent    Ignore non-transparent sockets\n  --restore-skmark Set the packet mark to the socket mark if\n                   the socket matches and transparent / \n                   nowildcard conditions are satisfied"
+    },
+    "IP_TRANSPARENT": {
+      "exit_code": 0,
+      "output": "supported: setsockopt=1, getsockopt=1; socket closed without binding"
+    },
+    "IPV6_TRANSPARENT": {
+      "exit_code": 0,
+      "output": "supported: setsockopt=1, getsockopt=1; socket closed without binding"
+    },
+    "rules4": {
+      "command": [
+        "ip",
+        "rule",
+        "show"
+      ],
+      "exit_code": 0,
+      "output": "0:\tfrom all lookup local \n10000:\tfrom all fwmark 0xc0000/0xd0000 lookup legacy_system \n11000:\tfrom all iif lo oif dummy0 uidrange 0-0 lookup dummy0 \n11000:\tfrom all iif lo oif ccmni0 uidrange 0-0 lookup ccmni0 \n11000:\tfrom all iif lo oif wlan0 uidrange 0-0 lookup wlan0 \n16000:\tfrom all fwmark 0x10063/0x1ffff iif lo lookup local_network \n16000:\tfrom all fwmark 0x10062/0x1ffff iif lo lookup local_network \n16000:\tfrom all fwmark 0xd0064/0xdffff iif lo lookup ccmni0 \n16000:\tfrom all fwmark 0x10065/0x1ffff iif lo lookup wlan0 \n17000:\tfrom all iif lo oif dummy0 lookup dummy0 \n17000:\tfrom all fwmark 0xc0000/0xc0000 iif lo oif ccmni0 lookup ccmni0 \n17000:\tfrom all iif lo oif wlan0 lookup wlan0 \n18000:\tfrom all fwmark 0x0/0x10000 lookup legacy_system \n19000:\tfrom all fwmark 0x0/0x10000 lookup legacy_network \n20000:\tfrom all fwmark 0x0/0x10000 lookup local_network \n20000:\tfrom all fwmark 0x0/0x10000 lookup local_network \n23000:\tfrom all fwmark 0x65/0x1ffff iif lo lookup wlan0 \n31000:\tfrom all fwmark 0x0/0xffff iif lo lookup wlan0 \n32000:\tfrom all unreachable"
+    },
+    "rules6": {
+      "command": [
+        "ip",
+        "-6",
+        "rule",
+        "show"
+      ],
+      "exit_code": 0,
+      "output": "0:\tfrom all lookup local \n10000:\tfrom all fwmark 0xc0000/0xd0000 lookup legacy_system \n11000:\tfrom all iif lo oif dummy0 uidrange 0-0 lookup dummy0 \n11000:\tfrom all iif lo oif ccmni0 uidrange 0-0 lookup ccmni0 \n11000:\tfrom all iif lo oif wlan0 uidrange 0-0 lookup wlan0 \n16000:\tfrom all fwmark 0x10063/0x1ffff iif lo lookup local_network \n16000:\tfrom all fwmark 0x10062/0x1ffff iif lo lookup local_network \n16000:\tfrom all fwmark 0xd0064/0xdffff iif lo lookup ccmni0 \n16000:\tfrom all fwmark 0x10065/0x1ffff iif lo lookup wlan0 \n17000:\tfrom all iif lo oif dummy0 lookup dummy0 \n17000:\tfrom all fwmark 0xc0000/0xc0000 iif lo oif ccmni0 lookup ccmni0 \n17000:\tfrom all iif lo oif wlan0 lookup wlan0 \n18000:\tfrom all fwmark 0x0/0x10000 lookup legacy_system \n19000:\tfrom all fwmark 0x0/0x10000 lookup legacy_network \n20000:\tfrom all fwmark 0x0/0x10000 lookup local_network \n20000:\tfrom all fwmark 0x0/0x10000 lookup local_network \n23000:\tfrom all fwmark 0x65/0x1ffff iif lo lookup wlan0 \n31000:\tfrom all fwmark 0x0/0xffff iif lo lookup wlan0 \n32000:\tfrom all unreachable"
+    },
+    "firewall4": {
+      "command": [
+        "iptables-save"
+      ],
+      "exit_code": 0,
+      "output": "captured 11494 bytes; full firewall omitted",
+      "sha256": "4d88c5283b95688c5e8ab5f7526e158d35e300068aa8a65a9bc1a33c27336831"
+    },
+    "firewall6": {
+      "command": [
+        "ip6tables-save"
+      ],
+      "exit_code": 0,
+      "output": "captured 7988 bytes; full firewall omitted",
+      "sha256": "a3161e38689b1d69b818e67dfc24ff0b6886410f01aaa65f5c5fe75d81ec4436"
+    }
+  },
+  "mark_uses": [
+    {
+      "source": "firewall4",
+      "kind": "packet",
+      "value": 3735929255,
+      "mask": 4294967295,
+      "rule": "-A bw_raw_PREROUTING -m mark --mark 0xdeadc1a7 -j DROP"
+    },
+    {
+      "source": "firewall4",
+      "kind": "packet",
+      "value": 983140,
+      "mask": 2146435071,
+      "rule": "-A routectrl_mangle_INPUT -i ccmni0 -j MARK --set-xmark 0xf0064/0x7fefffff"
+    },
+    {
+      "source": "firewall4",
+      "kind": "packet",
+      "value": 196709,
+      "mask": 2146435071,
+      "rule": "-A routectrl_mangle_INPUT -i wlan0 -j MARK --set-xmark 0x30065/0x7fefffff"
+    },
+    {
+      "source": "firewall6",
+      "kind": "packet",
+      "value": 3735929255,
+      "mask": 4294967295,
+      "rule": "-A bw_raw_PREROUTING -m mark --mark 0xdeadc1a7 -j DROP"
+    },
+    {
+      "source": "firewall6",
+      "kind": "packet",
+      "value": 983140,
+      "mask": 2146435071,
+      "rule": "-A routectrl_mangle_INPUT -i ccmni0 -j MARK --set-xmark 0xf0064/0x7fefffff"
+    },
+    {
+      "source": "firewall6",
+      "kind": "packet",
+      "value": 196709,
+      "mask": 2146435071,
+      "rule": "-A routectrl_mangle_INPUT -i wlan0 -j MARK --set-xmark 0x30065/0x7fefffff"
+    },
+    {
+      "source": "rules4",
+      "kind": "packet",
+      "value": 786432,
+      "mask": 851968,
+      "rule": "10000:\tfrom all fwmark 0xc0000/0xd0000 lookup legacy_system "
+    },
+    {
+      "source": "rules4",
+      "kind": "packet",
+      "value": 65635,
+      "mask": 131071,
+      "rule": "16000:\tfrom all fwmark 0x10063/0x1ffff iif lo lookup local_network "
+    },
+    {
+      "source": "rules4",
+      "kind": "packet",
+      "value": 65634,
+      "mask": 131071,
+      "rule": "16000:\tfrom all fwmark 0x10062/0x1ffff iif lo lookup local_network "
+    },
+    {
+      "source": "rules4",
+      "kind": "packet",
+      "value": 852068,
+      "mask": 917503,
+      "rule": "16000:\tfrom all fwmark 0xd0064/0xdffff iif lo lookup ccmni0 "
+    },
+    {
+      "source": "rules4",
+      "kind": "packet",
+      "value": 65637,
+      "mask": 131071,
+      "rule": "16000:\tfrom all fwmark 0x10065/0x1ffff iif lo lookup wlan0 "
+    },
+    {
+      "source": "rules4",
+      "kind": "packet",
+      "value": 786432,
+      "mask": 786432,
+      "rule": "17000:\tfrom all fwmark 0xc0000/0xc0000 iif lo oif ccmni0 lookup ccmni0 "
+    },
+    {
+      "source": "rules4",
+      "kind": "packet",
+      "value": 0,
+      "mask": 65536,
+      "rule": "18000:\tfrom all fwmark 0x0/0x10000 lookup legacy_system "
+    },
+    {
+      "source": "rules4",
+      "kind": "packet",
+      "value": 0,
+      "mask": 65536,
+      "rule": "19000:\tfrom all fwmark 0x0/0x10000 lookup legacy_network "
+    },
+    {
+      "source": "rules4",
+      "kind": "packet",
+      "value": 0,
+      "mask": 65536,
+      "rule": "20000:\tfrom all fwmark 0x0/0x10000 lookup local_network "
+    },
+    {
+      "source": "rules4",
+      "kind": "packet",
+      "value": 0,
+      "mask": 65536,
+      "rule": "20000:\tfrom all fwmark 0x0/0x10000 lookup local_network "
+    },
+    {
+      "source": "rules4",
+      "kind": "packet",
+      "value": 101,
+      "mask": 131071,
+      "rule": "23000:\tfrom all fwmark 0x65/0x1ffff iif lo lookup wlan0 "
+    },
+    {
+      "source": "rules4",
+      "kind": "packet",
+      "value": 0,
+      "mask": 65535,
+      "rule": "31000:\tfrom all fwmark 0x0/0xffff iif lo lookup wlan0 "
+    },
+    {
+      "source": "rules6",
+      "kind": "packet",
+      "value": 786432,
+      "mask": 851968,
+      "rule": "10000:\tfrom all fwmark 0xc0000/0xd0000 lookup legacy_system "
+    },
+    {
+      "source": "rules6",
+      "kind": "packet",
+      "value": 65635,
+      "mask": 131071,
+      "rule": "16000:\tfrom all fwmark 0x10063/0x1ffff iif lo lookup local_network "
+    },
+    {
+      "source": "rules6",
+      "kind": "packet",
+      "value": 65634,
+      "mask": 131071,
+      "rule": "16000:\tfrom all fwmark 0x10062/0x1ffff iif lo lookup local_network "
+    },
+    {
+      "source": "rules6",
+      "kind": "packet",
+      "value": 852068,
+      "mask": 917503,
+      "rule": "16000:\tfrom all fwmark 0xd0064/0xdffff iif lo lookup ccmni0 "
+    },
+    {
+      "source": "rules6",
+      "kind": "packet",
+      "value": 65637,
+      "mask": 131071,
+      "rule": "16000:\tfrom all fwmark 0x10065/0x1ffff iif lo lookup wlan0 "
+    },
+    {
+      "source": "rules6",
+      "kind": "packet",
+      "value": 786432,
+      "mask": 786432,
+      "rule": "17000:\tfrom all fwmark 0xc0000/0xc0000 iif lo oif ccmni0 lookup ccmni0 "
+    },
+    {
+      "source": "rules6",
+      "kind": "packet",
+      "value": 0,
+      "mask": 65536,
+      "rule": "18000:\tfrom all fwmark 0x0/0x10000 lookup legacy_system "
+    },
+    {
+      "source": "rules6",
+      "kind": "packet",
+      "value": 0,
+      "mask": 65536,
+      "rule": "19000:\tfrom all fwmark 0x0/0x10000 lookup legacy_network "
+    },
+    {
+      "source": "rules6",
+      "kind": "packet",
+      "value": 0,
+      "mask": 65536,
+      "rule": "20000:\tfrom all fwmark 0x0/0x10000 lookup local_network "
+    },
+    {
+      "source": "rules6",
+      "kind": "packet",
+      "value": 0,
+      "mask": 65536,
+      "rule": "20000:\tfrom all fwmark 0x0/0x10000 lookup local_network "
+    },
+    {
+      "source": "rules6",
+      "kind": "packet",
+      "value": 101,
+      "mask": 131071,
+      "rule": "23000:\tfrom all fwmark 0x65/0x1ffff iif lo lookup wlan0 "
+    },
+    {
+      "source": "rules6",
+      "kind": "packet",
+      "value": 0,
+      "mask": 65535,
+      "rule": "31000:\tfrom all fwmark 0x0/0xffff iif lo lookup wlan0 "
+    }
+  ],
+  "candidate_mark": "0x00400000",
+  "candidate_mask": "0x00400000",
+  "automatic_setup_allowed": false,
+  "collision_risks": [
+    "firewall4: -A bw_raw_PREROUTING -m mark --mark 0xdeadc1a7 -j DROP",
+    "firewall4: -A routectrl_mangle_INPUT -i ccmni0 -j MARK --set-xmark 0xf0064/0x7fefffff",
+    "firewall4: -A routectrl_mangle_INPUT -i wlan0 -j MARK --set-xmark 0x30065/0x7fefffff",
+    "firewall6: -A bw_raw_PREROUTING -m mark --mark 0xdeadc1a7 -j DROP",
+    "firewall6: -A routectrl_mangle_INPUT -i ccmni0 -j MARK --set-xmark 0xf0064/0x7fefffff",
+    "firewall6: -A routectrl_mangle_INPUT -i wlan0 -j MARK --set-xmark 0x30065/0x7fefffff",
+    "TPROXY mark collision risk: vendor BPF/netd future changes cannot be certified by this snapshot; explicit live-namespace override required"
+  ],
+  "conclusion": "Capability evidence only: OUTPUT -> policy route -> PREROUTING requires a real TCP PoC. Automatic live-network setup is disabled.",
+  "note": "Compact report: full routes/private IPv6 addresses and repetitive connection-mark entries omitted. CLI probe emits complete analysis.",
+  "root_rules_unchanged_since_before_poc": true
+}

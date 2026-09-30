@@ -101,3 +101,41 @@ its destination. LRU eviction can also fail a delayed accept under extreme load.
 Extraction: copy this directory to a new repository and run the same builds;
 there are no parent-relative source dependencies. Production module integration,
 multi-device validation and network-change stability remain subsequent phases.
+
+## TPROXY investigation (experimental; no live-network controller yet)
+
+`internal/tproxy` adds a read-only Linux/Android capability probe and transparent
+TCP listener, without depending on BPF flow maps or any integration layer.
+`OriginalDestination` uses the accepted socket's local address (getsockname),
+and has the existing generic relay resolver signature. SOCKS5 and byte relay
+remain unchanged. IPv4/IPv6 transparent socket options are supported; actual
+TPROXY packet interception has only been tested with IPv4 so far.
+
+```sh
+ebpf-proxy tproxy probe
+# Isolated kernel-path proof ONLY; refuses the host network namespace:
+unshare -n ebpf-proxy tproxy poc-isolated
+```
+
+The probe returns command exit codes/stderr, kernel configuration, socket-option
+tests, routing and mark references. Full system firewall dumps are not emitted.
+It never writes firewall/routing/sysctl/BPF settings. Mark 0x00400000 is only a
+candidate; vendor ingress masks and future netd/BPF behavior mean automatic
+live-network installation is **not allowed**. No universal ROM profile is claimed.
+
+The isolated PoC installs two owned chains, priority 9001 and table 38766, then
+connects to a non-local test destination and checks exact original destination.
+A specific initial host route and a test source address are created only in the
+fresh namespace. Interception is enabled last; rollback removes entrance jumps
+first and all resources in reverse order. A destroyed namespace also cleans up
+after crashes. No existing Android chains/netd programs or host routes are changed.
+KernelSU domain policy on the tested device permits the socket options and this
+isolated test; no additional SELinux permission is added or assumed for other ROMs.
+
+Tests: `go test ./...`; privileged Linux/Android tests opt in using
+`TP_RUN_PRIVILEGED=1 ./tproxy-tests -test.v`, built with
+`go test -c ./internal/tproxy`. Each real interception or injected setup-failure
+case runs in a newly created network namespace. Host-namespace refusal is tested
+without performing writes. This is NOT yet an App UID, direct-relay or SOCKS5
+MITM acceptance result. No production setup/repair API is exposed prematurely.
+UDP/DNS/QUIC remain untouched. Existing TUN/eBPF defaults and tests remain intact.

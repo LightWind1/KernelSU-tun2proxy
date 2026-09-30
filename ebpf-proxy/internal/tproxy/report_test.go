@@ -21,3 +21,10 @@ func TestMalformedMarks(t *testing.T) {
 		t.Fatal(u)
 	}
 }
+
+func TestMarkOperationMasks(t *testing.T) {
+	u := MarkUses("fixture", "-A OUTPUT -j CONNMARK --save-mark --nfmask 0xfffff --ctmask 0xfffff\n-A OUTPUT -j MARK --or-mark 0x400000\n-A OUTPUT -j MARK --and-mark 0xffbfffff")
+	if len(u) != 4 || u[0].Kind != "packet" || u[0].Mask != 0xfffff || u[1].Kind != "connection" || u[1].Mask != 0xfffff || u[2].Mask != 0x400000 || u[3].Mask != 0x400000 {
+		t.Fatalf("mask operation semantics: %+v", u)
+	}
+}
