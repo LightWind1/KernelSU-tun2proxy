@@ -96,3 +96,26 @@ empty child cgroup. No matching BPF SELinux denial was found. Loader refuses
 foreign-program replacement; no SELinux broadening or default-backend change.
 Current Android transparent acceptance is blocked by netd exclusive attachments.
 External saved proxy TCP reachability also remains unverified/failed.
+
+## Phase 5 — module adapter
+
+Added backend controller and independent config translation. Optional `backend`
+defaults to TUN when absent; optional `ebpf_port` defaults to 18080. Existing
+proxy_url supplies host, port and decoded authentication; existing route_mode,
+app_packages and bypass_ips supply UID/CIDR policy. No second upstream settings.
+HTTP CONNECT is explicitly rejected for eBPF rather than assumed SOCKS5.
+Native TCP leaves DNS/UDP direct; stored TUN network fields remain unchanged.
+
+Controller serializes start/stop, checks capability before launch, checks daemon
+readiness, and refuses backend switching while another engine runs. Shell service
+auto-start and uninstall use the same controller; TUN implementation is retained.
+Build adapter installs only binary and BPF object. No new SELinux allow rule.
+New native links are not pinned; SIGKILL lifetime test confirms all three hooks
+detach on Linux 6.6. Runtime lock/privacy tests cover duplicate daemons, public
+directories and symlink rejection. Original Android app/profile/certificate/route
+tests and adapter tests passed on the device.
+
+An isolated module staging directory on Android tested actual controller start:
+exclusive root netd hook ID 23 / flags 0 was reported before process launch.
+Existing installed config, TUN routes, system programs and certificate state were
+untouched. This is safe rejection evidence, not successful Android redirect.

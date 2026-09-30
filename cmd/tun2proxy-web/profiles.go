@@ -90,6 +90,9 @@ func profileByID(p ProfileSet, id string) (ConnectionProfile, bool) {
 	return ConnectionProfile{}, false
 }
 func validateProfileConfig(c Config) error {
+	if e := validateBackend(c); e != nil {
+		return e
+	}
 	u, e := url.Parse(c.ProxyURL)
 	if e != nil || u.Hostname() == "" || u.Port() == "" {
 		return errors.New("invalid proxy URL")

@@ -451,6 +451,13 @@ cmd_web_status() {
 }
 
 # ---- main dispatch ----
+if [ "${TUN2PROXY_LEGACY_CTL:-}" != "1" ]; then
+    case "${1:-}" in
+        start|stop|restart|auto-start)
+            exec "$MODDIR/system/bin/tun2proxy-web" --backend-action "$1"
+            ;;
+    esac
+fi
 case "${1:-}" in
     start)
         cmd_start

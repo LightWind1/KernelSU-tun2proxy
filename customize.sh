@@ -28,6 +28,9 @@ if [ -f "$MODDIR/system/bin/tun2proxy-tun-launcher" ]; then
 fi
 
 # Set executable on web backend
+if [ -f "$MODDIR/system/bin/ebpf-proxy" ]; then
+    chmod 755 "$MODDIR/system/bin/ebpf-proxy"
+fi
 if [ -f "$MODDIR/system/bin/tun2proxy-web" ]; then
     chmod +x "$MODDIR/system/bin/tun2proxy-web"
     ui_print "  [x] tun2proxy-web backend found"

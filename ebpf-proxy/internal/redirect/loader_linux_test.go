@@ -3,6 +3,7 @@
 package redirect
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"ebpf-proxy/internal/config"
@@ -10,6 +11,7 @@ import (
 	"ebpf-proxy/internal/upstream"
 	"encoding/binary"
 	"fmt"
+	"github.com/cilium/ebpf"
 	"io"
 	"net"
 	"os"
@@ -22,6 +24,78 @@ import (
 	"time"
 	"unsafe"
 )
+
+func TestNativeLinkCrashChild(t *testing.T) {
+	if os.Getenv("EP_CRASH_CHILD") != "1" {
+		t.Skip("private crash subprocess")
+	}
+	c := config.Config{Version: 1, IPv6: true, Listener: config.Endpoint{Address: "127.0.0.1", Port: 18080}}
+	c.BPF.Object = os.Getenv("EP_BPF_OBJECT")
+	c.BPF.Cgroup = os.Getenv("EP_CGROUP")
+	c.Policy.Mode = "uid_allowlist"
+	m, e := Load(c)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer m.Close()
+	fmt.Println("LINKS_READY")
+	time.Sleep(time.Minute)
+}
+func TestNativeLinkCrashDetach(t *testing.T) {
+	if os.Getenv("EP_RUN_PRIVILEGED") != "1" {
+		t.Skip("privileged native link lifetime test")
+	}
+	group := fmt.Sprintf("/sys/fs/cgroup/ep-crash-%d", os.Getpid())
+	if e := os.Mkdir(group, 0700); e != nil {
+		t.Fatal(e)
+	}
+	defer os.Remove(group)
+	exe, _ := os.Executable()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, exe, "-test.run=^TestNativeLinkCrashChild$")
+	cmd.Env = append(os.Environ(), "EP_CRASH_CHILD=1", "EP_CGROUP="+group)
+	p, e := cmd.StdoutPipe()
+	if e != nil {
+		t.Fatal(e)
+	}
+	cmd.Stderr = os.Stderr
+	if e = cmd.Start(); e != nil {
+		t.Fatal(e)
+	}
+	defer cmd.Process.Kill()
+	scanner := bufio.NewScanner(p)
+	ready := false
+	for scanner.Scan() {
+		if scanner.Text() == "LINKS_READY" {
+			ready = true
+			break
+		}
+	}
+	if !ready {
+		cmd.Wait()
+		t.Fatal("child not ready")
+	}
+	f, e := os.Open(group)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer f.Close()
+	for _, a := range []ebpf.AttachType{ebpf.AttachCGroupInet4Connect, ebpf.AttachCGroupInet6Connect, ebpf.AttachCGroupSockOps} {
+		_, ids, e := QueryCgroup(int(f.Fd()), a)
+		if e != nil || len(ids) != 1 {
+			t.Fatalf("live child links: %v %v", ids, e)
+		}
+	}
+	cmd.Process.Kill()
+	cmd.Wait()
+	for _, a := range []ebpf.AttachType{ebpf.AttachCGroupInet4Connect, ebpf.AttachCGroupInet6Connect, ebpf.AttachCGroupSockOps} {
+		_, ids, e := QueryCgroup(int(f.Fd()), a)
+		if e != nil || len(ids) != 0 {
+			t.Fatalf("crash left persistent links: %v %v", ids, e)
+		}
+	}
+}
 
 func TestABI(t *testing.T) {
 	if unsafe.Sizeof(FlowKey{}) != 48 || unsafe.Sizeof(FlowValue{}) != 48 || unsafe.Sizeof(Policy{}) != 40 || unsafe.Sizeof(Prefix{}) != 20 {

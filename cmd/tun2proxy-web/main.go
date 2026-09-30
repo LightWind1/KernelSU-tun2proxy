@@ -58,6 +58,8 @@ func init() {
 // ========== Config Schema ==========
 
 type Config struct {
+	Backend     string   `json:"backend,omitempty"`
+	EBPFPort    int      `json:"ebpf_port,omitempty"`
 	RouteMode   string   `json:"route_mode"`
 	AppPackages []string `json:"app_packages"`
 	Version     string   `json:"version"`
@@ -127,6 +129,9 @@ func saveConfig(cfg Config) error {
 }
 
 func saveRuntimeConfig(cfg Config) error {
+	if e := validateBackend(cfg); e != nil {
+		return e
+	}
 	configMu.Lock()
 	defer configMu.Unlock()
 
@@ -168,7 +173,7 @@ type ProcessStatus struct {
 	Uptime  string `json:"uptime"`
 }
 
-func getProcessStatus() ProcessStatus {
+func getTunProcessStatus() ProcessStatus {
 	ps := ProcessStatus{}
 	pidFile := filepath.Join(runDir, "tun2proxy.pid")
 
@@ -305,6 +310,8 @@ func apiStatus(w http.ResponseWriter, r *http.Request) {
 		"config":        cfg,
 		"tun_available": tunAvailable(),
 		"routing":       readRoutes(),
+		"backend":       backendName(cfg),
+		"ebpf":          ebpfStatus(),
 	})
 }
 
@@ -375,7 +382,8 @@ func apiStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check binary exists
-	if _, err := os.Stat(binary); os.IsNotExist(err) {
+	cfg, _ := loadConfig()
+	if _, err := os.Stat(binary); backendName(cfg) == "tun" && os.IsNotExist(err) {
 		writeError(w, 500, "tun2proxy binary not found. Build it from the tun2proxy/ submodule.")
 		return
 	}
@@ -384,7 +392,7 @@ func apiStart(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJSON(w, 500, map[string]interface{}{
 			"ok":     false,
-			"error":  "Failed to start tun2proxy",
+			"error":  "Failed to start proxy backend",
 			"output": output,
 		})
 		return
@@ -411,7 +419,7 @@ func apiStop(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJSON(w, 500, map[string]interface{}{
 			"ok":     false,
-			"error":  "Failed to stop tun2proxy",
+			"error":  "Failed to stop proxy backend",
 			"output": output,
 		})
 		return
@@ -432,7 +440,7 @@ func apiRestart(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJSON(w, 500, map[string]interface{}{
 			"ok":     false,
-			"error":  "Failed to restart tun2proxy",
+			"error":  "Failed to restart proxy backend",
 			"output": output,
 		})
 		return
@@ -457,6 +465,9 @@ func apiLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logFile := filepath.Join(logDir, "tun2proxy.log")
+	if r.URL.Query().Get("category") == "ebpf" {
+		logFile = filepath.Join(logDir, "ebpf.log")
+	}
 	if r.URL.Query().Get("category") == "certificate" {
 		logFile = filepath.Join(logDir, "certificate.log")
 	}
@@ -502,6 +513,9 @@ func tunAvailable() bool {
 // ========== Main ==========
 
 func main() {
+	if backendCLI() {
+		return
+	}
 	if certBootCLI() {
 		return
 	}
@@ -565,6 +579,7 @@ func main() {
 	}))
 	mux.HandleFunc("/api/logs", cors(apiLogs))
 	mux.HandleFunc("/api/check", cors(apiCheck))
+	mux.HandleFunc("/api/ebpf", certHTTP(apiEBPF))
 
 	// Health check
 	mux.HandleFunc("/api/health", cors(func(w http.ResponseWriter, r *http.Request) {

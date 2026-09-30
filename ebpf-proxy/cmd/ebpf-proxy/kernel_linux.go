@@ -5,6 +5,7 @@ package main
 import (
 	"ebpf-proxy/internal/config"
 	"ebpf-proxy/internal/daemon"
+	"ebpf-proxy/internal/redirect"
 	"encoding/json"
 	"fmt"
 	"github.com/cilium/ebpf"
@@ -21,6 +22,12 @@ import (
 )
 
 func runNative(c config.Config) error { return daemon.Run(c) }
+func checkNative(c config.Config) error {
+	if e := redirect.CheckCgroup(c.BPF.Cgroup, c.IPv6); e != nil {
+		return e
+	}
+	return verifyObject(c.BPF.Object)
+}
 func verifyObject(path string) error {
 	spec, e := ebpf.LoadCollectionSpec(path)
 	if e != nil {

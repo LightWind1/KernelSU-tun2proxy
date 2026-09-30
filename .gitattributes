@@ -8,3 +8,5 @@ system/bin/tun2proxyctl text eol=lf
 system/bin/tun2proxy binary
 system/bin/tun2proxy-web binary
 system/bin/tun2proxy-tun-launcher binary
+system/bin/ebpf-proxy binary
+*.bpf.o binary

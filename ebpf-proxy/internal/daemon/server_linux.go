@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -125,6 +126,7 @@ func Run(cfg config.Config) error {
 		return e
 	}
 	stats := &relay.Stats{}
+	var ready atomic.Bool
 	stop := make(chan struct{})
 	var once sync.Once
 	mux := http.NewServeMux()
@@ -138,7 +140,7 @@ func Run(cfg config.Config) error {
 		var err error
 		switch req.Action {
 		case "status":
-			result = map[string]any{"running": true, "programs_loaded": true, "native_links": true, "listener": cfg.Listener.String(), "ipv6": cfg.IPv6, "upstream": connector.Address, "target_uids": manager.UIDs(), "policy_mode": cfg.Policy.Mode, "udp_policy": "pass", "counters": manager.Counters(), "relay": stats.Snapshot(), "flow_map_entries": len(manager.Flows())}
+			result = map[string]any{"running": ready.Load(), "pid": os.Getpid(), "programs_loaded": true, "native_links": true, "listener": cfg.Listener.String(), "ipv6": cfg.IPv6, "upstream": connector.Address, "target_uids": manager.UIDs(), "policy_mode": cfg.Policy.Mode, "udp_policy": "pass", "counters": manager.Counters(), "relay": stats.Snapshot(), "flow_map_entries": len(manager.Flows())}
 		case "flows":
 			result = manager.Flows()
 		case "uid-add":
@@ -189,6 +191,7 @@ func Run(cfg config.Config) error {
 		return e
 	}
 	logger.Info("redirect ready", "listener", cfg.Listener.String(), "upstream", connector.Address, "udp", "pass")
+	ready.Store(true)
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sig)

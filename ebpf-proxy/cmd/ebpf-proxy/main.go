@@ -51,6 +51,9 @@ func execute() error {
 	if command == "run" {
 		return runNative(cfg)
 	}
+	if command == "check" {
+		return checkNative(cfg)
+	}
 	connector := upstream.SOCKS5{Address: net.JoinHostPort(cfg.Upstream.Host, fmt.Sprint(cfg.Upstream.Port)), Username: cfg.Upstream.Username, Password: cfg.Upstream.Password, Timeout: time.Duration(cfg.ConnectTimeoutSeconds) * time.Second}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()

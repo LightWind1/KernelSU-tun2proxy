@@ -3,6 +3,7 @@
 
 # Stop any running tun2proxy processes
 MODDIR=${0%/*}
+TUN2PROXY_MODDIR="$MODDIR" "$MODDIR/system/bin/tun2proxy-web" --backend-action stop
 TUN2PROXY_MODDIR="$MODDIR" "$MODDIR/system/bin/tun2proxy-web" --cert-remove
 cert_cleanup=$?
 "$MODPATH/system/bin/tun2proxy-web" --routes-stop 2>/dev/null || "${0%/*}/system/bin/tun2proxy-web" --routes-stop
