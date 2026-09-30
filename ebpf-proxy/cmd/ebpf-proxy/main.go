@@ -24,7 +24,7 @@ func main() {
 }
 func execute() error {
 	if len(os.Args) < 2 {
-		return fmt.Errorf("usage: ebpf-proxy poc|probe-upstream --config FILE [--destination IP:PORT]")
+		return fmt.Errorf("usage: ebpf-proxy run|poc|probe-upstream|check --config FILE; probe-kernel; verify-object --object FILE; check-cgroup --object FILE --cgroup DIR; status|stop|uid|debug --runtime-dir DIR")
 	}
 	command := os.Args[1]
 	if command == "probe-kernel" {
@@ -50,6 +50,9 @@ func execute() error {
 	}
 	if command == "status" || command == "stop" || command == "uid" || command == "debug" {
 		return controlNative(*runtimeDir, command, flags.Args())
+	}
+	if command != "run" && command != "poc" && command != "probe-upstream" && command != "check" {
+		return fmt.Errorf("unknown command %q", command)
 	}
 	cfg, e := config.Load(*path)
 	if e != nil {

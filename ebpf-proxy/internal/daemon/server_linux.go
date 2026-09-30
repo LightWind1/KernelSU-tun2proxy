@@ -129,8 +129,16 @@ func Run(cfg config.Config) error {
 	var ready atomic.Bool
 	stop := make(chan struct{})
 	var once sync.Once
+	var controlMu sync.RWMutex
+	controlClosed := false
 	mux := http.NewServeMux()
 	mux.HandleFunc("/command", func(w http.ResponseWriter, r *http.Request) {
+		controlMu.RLock()
+		defer controlMu.RUnlock()
+		if controlClosed {
+			http.Error(w, "daemon stopping", 503)
+			return
+		}
 		var req Request
 		if r.Method != "POST" || json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req) != nil {
 			http.Error(w, "invalid command", 400)
@@ -165,7 +173,8 @@ func Run(cfg config.Config) error {
 	})
 	server := &http.Server{Handler: mux, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second}
 	defer server.Close()
-	go server.Serve(control)
+	controlErrors := make(chan error, 1)
+	go func() { controlErrors <- server.Serve(control) }()
 	serveErrors := make(chan error, len(listeners))
 	for _, l := range listeners {
 		go func(l net.Listener) {
@@ -210,7 +219,13 @@ running:
 		case cause = <-serveErrors:
 			completed++
 			break running
+		case cause = <-controlErrors:
+			break running
 		case <-ticker.C:
+			if _, e = os.Lstat(path); e != nil {
+				cause = errors.New("private control socket disappeared")
+				break running
+			}
 			if e = manager.Heartbeat(); e != nil {
 				cause = e
 				break running
@@ -222,9 +237,14 @@ running:
 		}
 	}
 	_ = manager.SetEnabled(false)
+	ready.Store(false)
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), time.Second)
 	_ = server.Shutdown(shutdownCtx)
 	shutdownCancel()
+	_ = server.Close()
+	controlMu.Lock()
+	controlClosed = true
+	controlMu.Unlock()
 	// Detach connect hooks while listeners still exist; then drain accepted TCP.
 	// Collection maps stay alive until all resolving handlers have exited.
 	manager.Detach()

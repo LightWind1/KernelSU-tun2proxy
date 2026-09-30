@@ -6,7 +6,7 @@
 # Only runtime assets go into the module zip.
 set -e
 
-VERSION="v1.0.26"
+VERSION="v1.0.27"
 MODULE_DIR="$(cd "$(dirname "$0")" && pwd)"
 OUTPUT="$MODULE_DIR/../tun2proxy-for-KernelSU-${VERSION}.zip"
 
@@ -30,6 +30,7 @@ zip -r "$OUTPUT" . \
     -x ".git/*" ".git" \
        ".claude/*" ".claude" \
        "cmd/*" "cmd" \
+       "ebpf-proxy/*" "ebpf-proxy" "build-ebpf.ps1" \
        "META-INF/*" "META-INF" \
        "pack.sh" "pack.ps1" \
        "build-tun2proxy.sh" "build-tun2proxy.ps1" \

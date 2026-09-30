@@ -1,6 +1,6 @@
 id=tun2proxy
 name=Tun2Proxy for Android
-version=v1.0.26
-versionCode=27
+version=v1.0.27
+versionCode=28
 author=KernelSU Community
-description=Route all device traffic through SOCKS5/HTTP proxy via TUN interface, with web control panel. Powered by tun2proxy (Rust).
+description=TCP proxy with compatible TUN/tun2proxy and experimental cgroup eBPF backends, UID policy, integrated CA management and WebUI. eBPF requires compatible cgroup attachment and a SOCKS5 upstream.

@@ -451,6 +451,13 @@ cmd_web_status() {
 }
 
 # ---- main dispatch ----
+if [ "$(json_get_str backend 2>/dev/null || true)" = "ebpf" ] || [ -S "$RUN_DIR/ebpf/control.sock" ]; then
+    case "${1:-}" in
+        status) exec "$MODDIR/system/bin/ebpf-proxy" status --runtime-dir "$RUN_DIR/ebpf" ;;
+        is-running) "$MODDIR/system/bin/ebpf-proxy" status --runtime-dir "$RUN_DIR/ebpf" | grep -q '"running":true'; exit $? ;;
+        check) exec "$MODDIR/system/bin/ebpf-proxy" check-cgroup --object "$MODDIR/system/bpf/redirect.bpf.o" --cgroup /sys/fs/cgroup ;;
+    esac
+fi
 if [ "${TUN2PROXY_LEGACY_CTL:-}" != "1" ]; then
     case "${1:-}" in
         start|stop|restart|auto-start)

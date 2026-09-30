@@ -43,6 +43,9 @@ func verifyObject(path string) error {
 	return nil
 }
 func controlNative(dir, command string, args []string) error {
+	if dir == "" {
+		return fmt.Errorf("--runtime-dir is required")
+	}
 	req := daemon.Request{Action: command}
 	if command == "uid" {
 		if len(args) < 1 {
@@ -68,6 +71,12 @@ func controlNative(dir, command string, args []string) error {
 	}
 	b, e := daemon.Control(dir, req)
 	if e != nil {
+		if command == "status" {
+			if _, se := os.Lstat(filepath.Join(dir, "control.sock")); os.IsNotExist(se) {
+				fmt.Println(`{"running":false,"programs_loaded":false}`)
+				return nil
+			}
+		}
 		return e
 	}
 	fmt.Println(string(b))

@@ -144,3 +144,22 @@ engine PID 22550 was verified to originate from that staging path; stop removed
 the temporary interface. No capture rules were installed. External upstream
 192.168.30.102:8083 still failed TCP connect on this test date. Existing installed
 module/config were not replaced; no device reboot was needed.
+
+Additional failure tests cover relay idle timeout, cancellation, client RST and
+unreachable upstream (no leaked active stream). Native daemon control was
+exercised on Linux in a private cgroup: readiness, uid add/del/list/clear, stop
+and control-socket cleanup passed. Control-server failure or socket removal
+disables interception; shutdown joins resolver handlers before map destruction.
+C compile-time assertions and Go tests validate shared ABI structure sizes.
+
+Release v1.0.27 keeps TUN default, includes the independently built native binary,
+BPF object, WebUI integration and license notices, and excludes ebpf-proxy source/
+tests from runtime ZIP. External proxy and Android exclusive-hook blockers are
+not bypassed. Phase 7 complete production acceptance remains outstanding.
+
+Final regression also separates IPv4/IPv6 bypass tries (an IPv6 ::/0 must not
+bypass IPv4), validates map ABI sizes before load, and tests 100 refused connects
+that never reach accept: sockops lifecycle cleanup leaves no stale tuple entry.
+Core-directory extraction into a fresh directory outside the repository passed
+tests and Android/BPF builds with no parent sources. Latest object contains three
+programs and eight maps (the extra map isolates IPv6 CIDR policy).

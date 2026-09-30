@@ -81,7 +81,7 @@ non-target direct, UID/CIDR bypass, UDP pass and lease expiry. Test invocation:
 where `go test -c ./internal/redirect` builds redirect-tests. Only test child
 processes enter a private cgroup; the root hierarchy is never changed.
 
-Android 15 / 5.10.236: three actual programs and seven maps passed verifier
+Android 15 / 5.10.236: three actual programs and eight maps passed verifier
 without kernel BTF. However Android netd connect4/6 programs occupy the root
 cgroup with exclusive attach flags 0. The loader rejects this ancestor conflict,
 preserving foreign programs and device networking. No Android transparent

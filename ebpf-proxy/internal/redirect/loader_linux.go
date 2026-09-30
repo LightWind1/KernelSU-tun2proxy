@@ -117,6 +117,12 @@ func Load(cfg config.Config) (*Manager, error) {
 	if e != nil {
 		return nil, e
 	}
+	for name, sizes := range map[string][2]uint32{"target_uid_map": {4, 4}, "bypass_uid_map": {4, 4}, "config_map": {4, 40}, "socket_store": {4, 48}, "flow_map": {48, 48}, "bypass_prefix": {20, 4}, "bypass_prefix6": {20, 4}, "stats_map": {4, 8}} {
+		s := spec.Maps[name]
+		if s == nil || s.KeySize != sizes[0] || s.ValueSize != sizes[1] {
+			return nil, fmt.Errorf("BPF map %s missing or ABI mismatch", name)
+		}
+	}
 	coll, e := ebpf.NewCollection(spec)
 	if e != nil {
 		return nil, fmt.Errorf("load BPF (verifier): %w", e)
@@ -156,7 +162,11 @@ func Load(cfg config.Config) (*Manager, error) {
 		if p.Addr().Is4() {
 			key.Bits += 96
 		}
-		if e = coll.Maps["bypass_prefix"].Put(key, uint32(1)); e != nil {
+		name := "bypass_prefix6"
+		if p.Addr().Is4() {
+			name = "bypass_prefix"
+		}
+		if e = coll.Maps[name].Put(key, uint32(1)); e != nil {
 			return nil, e
 		}
 	}

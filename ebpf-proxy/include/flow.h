@@ -37,4 +37,8 @@ struct ep_policy {
     __u64 lease_ns;
 };
 struct ep_prefix { __u32 prefixlen; __u32 address[4]; };
+_Static_assert(sizeof(struct ep_flow_key)==48,"flow key ABI");
+_Static_assert(sizeof(struct ep_flow_value)==48,"flow value ABI");
+_Static_assert(sizeof(struct ep_policy)==40,"policy ABI");
+_Static_assert(sizeof(struct ep_prefix)==20,"prefix ABI");
 #endif

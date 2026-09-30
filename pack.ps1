@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $moduleDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$version = "v1.0.26"
+$version = "v1.0.27"
 $output = Join-Path (Split-Path -Parent $moduleDir) "tun2proxy-for-KernelSU-$version.zip"
 
 # Files/directories to EXCLUDE from the module zip
@@ -9,6 +9,7 @@ $excludeDirs = @(
     ".git",
     ".claude",
     "cmd",
+    "ebpf-proxy",
     "META-INF",
     "_pkg_stage"
 )
@@ -17,6 +18,7 @@ $excludeFiles = @(
     "pack.ps1",
     "build-tun2proxy.sh",
     "build-tun2proxy.ps1",
+    "build-ebpf.ps1",
     "install.sh",
     "install.ps1",
     "go.mod",

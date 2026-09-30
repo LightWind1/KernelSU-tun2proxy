@@ -10,6 +10,7 @@ import (
 	"ebpf-proxy/internal/relay"
 	"ebpf-proxy/internal/upstream"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"github.com/cilium/ebpf"
 	"io"
@@ -141,6 +142,15 @@ func TestClientChild(t *testing.T) {
 			defer wg.Done()
 			defer func() { <-slots }()
 			c, e := net.DialTimeout("tcp", os.Getenv("EP_TARGET"), 5*time.Second)
+			if os.Getenv("EP_EXPECT_FAILURE") == "1" {
+				if !errors.Is(e, syscall.ECONNREFUSED) {
+					if c != nil {
+						c.Close()
+					}
+					t.Errorf("expected refused redirected listener, got %v", e)
+				}
+				return
+			}
 			if e != nil {
 				t.Error(e)
 				return
@@ -260,11 +270,22 @@ func TestPrivilegedRedirect(t *testing.T) {
 	if stats.Accepted.Load() != 1002 || stats.Failures.Load() != 0 {
 		t.Fatalf("relay counts: %+v; BPF: %+v", stats.Snapshot(), m.Counters())
 	}
+	// IPv6 ::/0 must not accidentally bypass IPv4-mapped representations.
+	wide6 := Prefix{Bits: 0}
+	if e = m.collection.Maps["bypass_prefix6"].Put(wide6, uint32(1)); e != nil {
+		t.Fatal(e)
+	}
+	child(61000, 1, target4.Addr().String())
+	child(61000, 1, target6.Addr().String())
+	if stats.Accepted.Load() != 1003 {
+		t.Fatal("IPv6 bypass affected IPv4 or failed to bypass IPv6")
+	}
+	m.collection.Maps["bypass_prefix6"].Delete(wide6)
 	if e = m.UID("add", 0); e != nil {
 		t.Fatal(e)
 	}
 	child(0, 1, target4.Addr().String())
-	if stats.Accepted.Load() != 1002 {
+	if stats.Accepted.Load() != 1003 {
 		t.Fatal("daemon UID bypass failed")
 	}
 	prefix := Prefix{Bits: 128, Address: [16]byte{10: 255, 11: 255, 12: 127, 13: 0, 14: 0, 15: 2}}
@@ -272,7 +293,7 @@ func TestPrivilegedRedirect(t *testing.T) {
 		t.Fatal(e)
 	}
 	child(61000, 1, target4.Addr().String())
-	if stats.Accepted.Load() != 1002 {
+	if stats.Accepted.Load() != 1003 {
 		t.Fatal("CIDR bypass failed")
 	}
 	m.collection.Maps["bypass_prefix"].Delete(prefix)
@@ -294,7 +315,7 @@ func TestPrivilegedRedirect(t *testing.T) {
 	if out, e := cmd.CombinedOutput(); e != nil {
 		t.Fatalf("UDP: %v %s", e, out)
 	}
-	if stats.Accepted.Load() != 1002 {
+	if stats.Accepted.Load() != 1003 {
 		t.Fatal("UDP intercepted")
 	}
 	// A stalled daemon's lease expires independently in kernel, retaining direct networking.
@@ -304,7 +325,7 @@ func TestPrivilegedRedirect(t *testing.T) {
 	<-done
 	time.Sleep(3100 * time.Millisecond)
 	child(61000, 1, target4.Addr().String())
-	if stats.Accepted.Load() != 1002 {
+	if stats.Accepted.Load() != 1003 {
 		t.Fatal("expired lease still intercepts")
 	}
 	if len(m.Flows()) != 0 {
@@ -314,8 +335,23 @@ func TestPrivilegedRedirect(t *testing.T) {
 		t.Fatal(e)
 	}
 	child(61000, 1, target4.Addr().String())
-	if stats.Accepted.Load() != 1002 {
+	if stats.Accepted.Load() != 1003 {
 		t.Fatal("disabled policy intercepted")
+	}
+	// Failed redirects never accepted by userspace must not leave tuple records.
+	if e = m.SetEnabled(true); e != nil {
+		t.Fatal(e)
+	}
+	failed := exec.Command(exe, "-test.run=^TestClientChild$")
+	failed.Env = append(os.Environ(), "EP_CHILD=1", "EP_EXPECT_FAILURE=1", "EP_COUNT=100", "EP_CGROUP="+group, "EP_UID=61000", "EP_TARGET="+target4.Addr().String())
+	if out, e := failed.CombinedOutput(); e != nil {
+		t.Fatalf("failed-connect cleanup: %v %s", e, out)
+	}
+	if e = m.SetEnabled(false); e != nil {
+		t.Fatal(e)
+	}
+	if len(m.Flows()) != 0 {
+		t.Fatalf("unaccepted failed connects left metadata: %+v", m.Flows())
 	}
 	t.Logf("IPv4/IPv6, UID add/del/non-target, 1000 connections, disable: relay=%+v BPF=%+v", stats.Snapshot(), m.Counters())
 }

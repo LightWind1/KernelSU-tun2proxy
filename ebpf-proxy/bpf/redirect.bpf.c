@@ -16,7 +16,8 @@ INLINE int redirect(struct bpf_sock_addr *ctx, __u16 family) {
         prefix.address[2]=__builtin_bswap32(0xffff);
         prefix.address[3]=ctx->user_ip4;
     } else {prefix.address[0]=ctx->user_ip6[0];prefix.address[1]=ctx->user_ip6[1];prefix.address[2]=ctx->user_ip6[2];prefix.address[3]=ctx->user_ip6[3];}
-    if(bpf_map_lookup_elem(&bypass_prefix,&prefix)){count(2);return 1;}
+    if(family==AF_INET){if(bpf_map_lookup_elem(&bypass_prefix,&prefix)){count(2);return 1;}}
+    else if(bpf_map_lookup_elem(&bypass_prefix6,&prefix)){count(2);return 1;}
     struct ep_flow_value v={.version=EP_ABI_VERSION,.family=family,
         .port=bpf_ntohs((__u16)ctx->user_port),.uid=uid,
         .cookie=bpf_get_socket_cookie(ctx),.created_ns=now};
