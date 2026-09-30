@@ -8,6 +8,7 @@ cmd/app-labels/build/
 cmd/cert-backend-test*
 cmd/cert-tests
 cmd/https-probe.jar
+ebpf-proxy/build/
 
 # Local tun2proxy source checkout (build-tun2proxy.* clones to a temp dir;
 # this only guards against a manual `git submodule add` / clone)

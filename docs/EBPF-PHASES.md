@@ -59,3 +59,17 @@ kernel-field reads, are the first candidate.
 eCapture is a reference only; no runtime dependency or TLS probe architecture
 is imported. Phases 1–7 require their own build/test evidence; upstream MITM
 observability must not be claimed when the external proxy is unavailable.
+
+## Phase 1 — independent relay
+
+Added standalone Go module, generic JSON config, SOCKS5 adapter (IPv4/IPv6/domain
+and RFC1929 authentication), fixed-destination PoC CLI and bounded byte relay.
+TCP half-close preserves responses after client FIN. Read/write idle deadlines
+and cancellation close broken or stalled streams without unbounded queues.
+Windows tests cover fragmented SOCKS replies, authentication and address forms.
+Android arm64 tests passed 1000 short connections and a 2 MiB delayed-reader /
+half-close roundtrip through a local SOCKS5 fixture. All payloads were compared.
+The external saved endpoint failed TCP connect on 2026-09-30, so actual external
+MITM/CA/HTTP2 request-response verification is pending, not claimed passed.
+No module configuration, service or device routing changed in this phase.
+Extraction requires no source changes; Go and optional Android cross-build only.
