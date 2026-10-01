@@ -1,0 +1,330 @@
+{
+  "Date": "2026-10-01",
+  "ModuleCLIExit": 1,
+  "ModuleSavedConfigurationReport": {
+    "automatic_setup_allowed": false,
+    "blocking_reasons": [
+      "SAVED_UPSTREAM_IS_NOT_SOCKS5"
+    ],
+    "network_rules_read_only": true,
+    "status": "blocked",
+    "upstream": "192.168.30.102:8083",
+    "upstream_type": "http",
+    "version": 1
+  },
+  "StandaloneCLIExit": 1,
+  "StandaloneScratchConfigurationReport": {
+    "version": 1,
+    "network_rules_read_only": true,
+    "automatic_setup_allowed": false,
+    "status": "blocked",
+    "candidate": {
+      "mark_value": 4194304,
+      "mark_mask": 4194304,
+      "routing_table": 38766,
+      "rule_priority": 9001,
+      "prefix": "ATP_LIVE"
+    },
+    "network_namespace": "net:[4026532071]",
+    "caller_uid": 0,
+    "upstream": "192.168.30.102:8083",
+    "configured_listener": "127.0.0.1:18080",
+    "policy_mode": "uid_allowlist",
+    "target_uids": [],
+    "daemon_uid_in_bypass": true,
+    "checks": {
+      "/proc/net/tcp": {
+        "exit_code": 0,
+        "output": "read 0 listening socket entries; addresses/owners omitted"
+      },
+      "/proc/net/tcp6": {
+        "exit_code": 0,
+        "output": "read 3 listening socket entries; addresses/owners omitted"
+      },
+      "IPV6_TRANSPARENT": {
+        "exit_code": 0,
+        "output": "supported: setsockopt=1, getsockopt=1; socket closed without binding"
+      },
+      "IP_TRANSPARENT": {
+        "exit_code": 0,
+        "output": "supported: setsockopt=1, getsockopt=1; socket closed without binding"
+      },
+      "MARK": {
+        "command": [
+          "iptables",
+          "-j",
+          "MARK",
+          "-h"
+        ],
+        "exit_code": 0,
+        "output": "MARK target options:\n  --set-xmark value[/mask]  Clear bits in mask and XOR value into nfmark\n  --set-mark value[/mask]   Clear bits in mask and OR value into nfmark\n  --and-mark bits           Binary AND the nfmark with bits\n  --or-mark bits            Binary OR the nfmark with bits\n  --xor-mark bits           Binary XOR the nfmark with bits"
+      },
+      "android": {
+        "command": [
+          "getprop",
+          "ro.build.version.release"
+        ],
+        "exit_code": 0,
+        "output": "15"
+      },
+      "firewall4": {
+        "command": [
+          "iptables-save"
+        ],
+        "exit_code": 0,
+        "output": "captured 11682 bytes; contents omitted",
+        "sha256": "1383554c581d13c1a2f3bae4c05596d5687d22e5cdc4e3805b8f334b601f3a70"
+      },
+      "firewall6": {
+        "command": [
+          "ip6tables-save"
+        ],
+        "exit_code": 0,
+        "output": "captured 8176 bytes; contents omitted",
+        "sha256": "f3bbac0665c4095832c827473348c5dcff8fb3fc51f419b3776ecc6c300f978e"
+      },
+      "identity": {
+        "command": [
+          "id"
+        ],
+        "exit_code": 0,
+        "output": "uid=0(root) gid=0(root) groups=0(root) context=u:r:ksu:s0"
+      },
+      "ip6tables": {
+        "command": [
+          "ip6tables",
+          "--version"
+        ],
+        "exit_code": 0,
+        "output": "ip6tables v1.8.10 (legacy)"
+      },
+      "iptables": {
+        "command": [
+          "iptables",
+          "--version"
+        ],
+        "exit_code": 0,
+        "output": "iptables v1.8.10 (legacy)"
+      },
+      "kernel": {
+        "command": [
+          "uname",
+          "-a"
+        ],
+        "exit_code": 0,
+        "output": "Linux localhost 5.10.236-android12-9-00003-gfb24cf99ad97-ab14313284 #1 SMP PREEMPT Tue Oct 21 03:03:12 UTC 2025 aarch64 Toybox"
+      },
+      "kernel_config": {
+        "exit_code": 0,
+        "output": "CONFIG_NETFILTER=y\nCONFIG_NETFILTER_XTABLES=y\nCONFIG_NETFILTER_XT_MARK=y\nCONFIG_NETFILTER_XT_MATCH_MARK=y\nCONFIG_NETFILTER_XT_MATCH_OWNER=y\nCONFIG_NETFILTER_XT_MATCH_SOCKET=y\nCONFIG_NETFILTER_XT_TARGET_MARK=y\nCONFIG_NETFILTER_XT_TARGET_TPROXY=y\nCONFIG_IP_ADVANCED_ROUTER=y\nCONFIG_IP_MULTIPLE_TABLES=y\nCONFIG_IPV6=y\nCONFIG_IPV6_MULTIPLE_TABLES=y\n# CONFIG_NF_TABLES is not set\nCONFIG_NFT_TPROXY: not present (not evidence of absence if config is unavailable)\nCONFIG_NFT_SOCKET: not present (not evidence of absence if config is unavailable)\nCONFIG_NFT_MARK: not present (not evidence of absence if config is unavailable)\nCONFIG_NF_TPROXY_IPV4=y\nCONFIG_NF_TPROXY_IPV6=y\nCONFIG_IP_NF_MANGLE=y\nCONFIG_IP6_NF_MANGLE=y",
+        "sha256": "aa19d5a2ad009afb5a8968e8a880790a4657c659041ac15c89e4b7ce6c0a04b6"
+      },
+      "mangle4": {
+        "command": [
+          "iptables",
+          "-w",
+          "2",
+          "-t",
+          "mangle",
+          "-S"
+        ],
+        "exit_code": 0,
+        "output": "captured 3664 bytes; contents omitted",
+        "sha256": "3ea12e574b0588ce7a80ee3fa9da8b786d717b45544e27f7affefda267e8f8a4"
+      },
+      "mangle6": {
+        "command": [
+          "ip6tables",
+          "-w",
+          "2",
+          "-t",
+          "mangle",
+          "-S"
+        ],
+        "exit_code": 0,
+        "output": "captured 3552 bytes; contents omitted",
+        "sha256": "c91a250131356b8e339fb4e939797ebe80a9b2e9866e698d6cc7da3eceaa1c0e"
+      },
+      "mark": {
+        "command": [
+          "iptables",
+          "-m",
+          "mark",
+          "-h"
+        ],
+        "exit_code": 0,
+        "output": "mark match options:\n[!] --mark value[/mask]    Match nfmark value with optional mask"
+      },
+      "owner": {
+        "command": [
+          "iptables",
+          "-m",
+          "owner",
+          "-h"
+        ],
+        "exit_code": 0,
+        "output": "owner match options:\n[!] --uid-owner userid[-userid]      Match local UID\n[!] --gid-owner groupid[-groupid]    Match local GID\n[!] --socket-exists                  Match if socket exists\n    --suppl-groups                   Also match supplementary groups set with --gid-owner"
+      },
+      "rules4": {
+        "command": [
+          "ip",
+          "rule",
+          "show"
+        ],
+        "exit_code": 0,
+        "output": "captured 1064 bytes; contents omitted",
+        "sha256": "0e9324b468114a648608d7a5c96c169d95e4aca9fafc5d3dd2d4091d9b0648db"
+      },
+      "rules6": {
+        "command": [
+          "ip",
+          "-6",
+          "rule",
+          "show"
+        ],
+        "exit_code": 0,
+        "output": "captured 1064 bytes; contents omitted",
+        "sha256": "0e9324b468114a648608d7a5c96c169d95e4aca9fafc5d3dd2d4091d9b0648db"
+      },
+      "sdk": {
+        "command": [
+          "getprop",
+          "ro.build.version.sdk"
+        ],
+        "exit_code": 0,
+        "output": "35"
+      },
+      "selinux": {
+        "command": [
+          "getenforce"
+        ],
+        "exit_code": 0,
+        "output": "Enforcing"
+      },
+      "snapshot_after": {
+        "exit_code": 0,
+        "sha256": "2d652110fb6d09f2e21fbfe616c1b3df8a17e1058460b0f056903eb3108e561b"
+      },
+      "snapshot_before": {
+        "exit_code": 0,
+        "sha256": "2d652110fb6d09f2e21fbfe616c1b3df8a17e1058460b0f056903eb3108e561b"
+      },
+      "table4": {
+        "command": [
+          "ip",
+          "-4",
+          "route",
+          "show",
+          "table",
+          "38766"
+        ],
+        "exit_code": 0,
+        "output": "captured 0 bytes; contents omitted",
+        "sha256": "055539df4a0b804c58caf46c0cd2941af10d64c1395ddd8e50b5f55d945841e6"
+      },
+      "table6": {
+        "command": [
+          "ip",
+          "-6",
+          "route",
+          "show",
+          "table",
+          "38766"
+        ],
+        "exit_code": 0,
+        "output": "captured 0 bytes; contents omitted",
+        "sha256": "055539df4a0b804c58caf46c0cd2941af10d64c1395ddd8e50b5f55d945841e6"
+      },
+      "tproxy4": {
+        "command": [
+          "iptables",
+          "-j",
+          "TPROXY",
+          "-h"
+        ],
+        "exit_code": 0,
+        "output": "TPROXY target options:\n  --on-port port\t\t    Redirect connection to port, or the original port if 0\n  --on-ip ip\t\t\t    Optionally redirect to the given IP\n  --tproxy-mark value[/mask]\t    Mark packets with the given value/mask"
+      },
+      "tproxy6": {
+        "command": [
+          "ip6tables",
+          "-j",
+          "TPROXY",
+          "-h"
+        ],
+        "exit_code": 0,
+        "output": "TPROXY target options:\n  --on-port port\t\t    Redirect connection to port, or the original port if 0\n  --on-ip ip\t\t\t    Optionally redirect to the given IP\n  --tproxy-mark value[/mask]\t    Mark packets with the given value/mask"
+      },
+      "upstream_socks5": {
+        "exit_code": 0,
+        "output": "SOCKS5 negotiation/authentication accepted; no CONNECT or payload sent"
+      },
+      "upstream_tcp": {
+        "exit_code": 0,
+        "output": "TCP reachable; connected endpoint=192.168.30.102:8083"
+      }
+    },
+    "blocking_reasons": [
+      "VENDOR_MARK_SAFETY_UNPROVEN",
+      "LIVE_OWNERSHIP_NOT_IMPLEMENTED",
+      "PRODUCTION_SUPERVISOR_NOT_DEPLOYED",
+      "NO_TARGET_UIDS",
+      "LIVE_IPV6_DATA_PATH_NOT_VALIDATED",
+      "MARK_MASK_OVERLAP_OBSERVED"
+    ],
+    "warnings": [
+      "No transparent listener was bound; no interception path or real App/MITM acceptance is established.",
+      "A later setup must freshly recheck resources and separately resolve vendor mark risk; this report never authorizes writes."
+    ],
+    "mark_conflict_references": [
+      {
+        "source": "firewall4",
+        "kind": "packet",
+        "value": 3735929255,
+        "mask": 4294967295
+      },
+      {
+        "source": "firewall4",
+        "kind": "packet",
+        "value": 983140,
+        "mask": 2146435071
+      },
+      {
+        "source": "firewall4",
+        "kind": "packet",
+        "value": 196709,
+        "mask": 2146435071
+      },
+      {
+        "source": "firewall6",
+        "kind": "packet",
+        "value": 3735929255,
+        "mask": 4294967295
+      },
+      {
+        "source": "firewall6",
+        "kind": "packet",
+        "value": 983140,
+        "mask": 2146435071
+      },
+      {
+        "source": "firewall6",
+        "kind": "packet",
+        "value": 196709,
+        "mask": 2146435071
+      }
+    ],
+    "snapshot_stable": true,
+    "upstream_probe": "socks5_ready",
+    "planned_mandatory_bypass": [
+      "daemon UID",
+      "system network UIDs",
+      "loopback",
+      "link-local",
+      "multicast/broadcast",
+      "resolved upstream IP:port"
+    ]
+  },
+  "SavedConfigurationUnchanged": true,
+  "RuntimeNotCreated": true
+}

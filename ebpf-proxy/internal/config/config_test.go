@@ -1,11 +1,34 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestDecodePrivatePipe(t *testing.T) {
+	c := valid()
+	c.Upstream.Username = "name"
+	c.Upstream.Password = "secret"
+	b, e := json.Marshal(c)
+	if e != nil {
+		t.Fatal(e)
+	}
+	got, e := Decode(strings.NewReader(string(b)))
+	if e != nil || got.Upstream.Password != c.Upstream.Password || got.ConnectTimeoutSeconds != 10 {
+		t.Fatal("private pipe changed validation or auth")
+	}
+	for _, bad := range []string{string(b) + " {}", strings.Replace(string(b), `"version":1`, `"version":1,"unknown":true`, 1)} {
+		if _, e := Decode(strings.NewReader(bad)); e == nil {
+			t.Fatal("pipe bypasses strict decoder")
+		}
+	}
+	if _, e := Decode(strings.NewReader(string(b) + strings.Repeat(" ", 1<<20))); e == nil {
+		t.Fatal("oversize trailing data accepted")
+	}
+}
 
 func valid() Config {
 	c := Config{Version: 1, Listener: Endpoint{"127.0.0.1", 18080}}

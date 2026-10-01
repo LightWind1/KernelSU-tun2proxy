@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -58,9 +59,23 @@ func Load(path string) (Config, error) {
 		return c, e
 	}
 	defer f.Close()
-	d := json.NewDecoder(io.LimitReader(f, 1<<20))
+	return Decode(f)
+}
+
+// Decode allows a consumer to supply existing configuration through a private
+// pipe without creating another persistent configuration file.
+func Decode(reader io.Reader) (Config, error) {
+	var c Config
+	b, e := io.ReadAll(io.LimitReader(reader, (1<<20)+1))
+	if e != nil {
+		return c, e
+	}
+	if len(b) > 1<<20 {
+		return c, errors.New("configuration exceeds 1 MiB")
+	}
+	d := json.NewDecoder(bytes.NewReader(b))
 	d.DisallowUnknownFields()
-	if e = d.Decode(&c); e != nil {
+	if e := d.Decode(&c); e != nil {
 		return c, e
 	}
 	var extra any

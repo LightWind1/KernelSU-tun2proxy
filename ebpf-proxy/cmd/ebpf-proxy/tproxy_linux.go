@@ -5,6 +5,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"ebpf-proxy/internal/config"
 	"ebpf-proxy/internal/tproxy"
 	"ebpf-proxy/internal/upstream"
 	"encoding/json"
@@ -21,6 +22,58 @@ import (
 )
 
 func tproxyCommand(args []string) error {
+	if len(args) > 0 && args[0] == "preflight" {
+		f := flag.NewFlagSet("preflight", flag.ContinueOnError)
+		path := f.String("config", "", "existing generic config; '-' reads a private stdin pipe")
+		mark := f.String("mark-value", "0x00400000", "candidate only; never written")
+		mask := f.String("mark-mask", "0x00400000", "single-bit candidate mask")
+		table := f.String("table", "38766", "candidate dedicated table")
+		priority := f.String("priority", "9001", "candidate policy priority")
+		prefix := f.String("prefix", "ATP_LIVE", "candidate chain prefix")
+		probe := f.Bool("probe-upstream", false, "optional TCP and SOCKS5 handshake; no payload/interception")
+		if e := f.Parse(args[1:]); e != nil {
+			return e
+		}
+		if f.NArg() != 0 {
+			return fmt.Errorf("unexpected preflight arguments")
+		}
+		values := make([]uint32, 4)
+		for i, s := range []string{*mark, *mask, *table, *priority} {
+			v, e := strconv.ParseUint(s, 0, 32)
+			if e != nil {
+				return fmt.Errorf("invalid numeric preflight option")
+			}
+			values[i] = uint32(v)
+		}
+		o := tproxy.PreflightOptions{Mark: values[0], Mask: values[1], Table: values[2], Priority: values[3], Prefix: *prefix}
+		if e := o.Validate(); e != nil {
+			return e
+		}
+		var c config.Config
+		var e error
+		if *path == "-" {
+			c, e = config.Decode(os.Stdin)
+		} else {
+			c, e = config.Load(*path)
+		}
+		if e != nil {
+			return e
+		}
+		r, e := tproxy.Preflight(context.Background(), c, o, *probe)
+		if e != nil {
+			return e
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if e = enc.Encode(r); e != nil {
+			return e
+		}
+		// The normal CLI error exit is 1; the JSON distinguishes a blocked report.
+		if !r.AutomaticSetup {
+			return fmt.Errorf("TPROXY_PREFLIGHT_BLOCKED: report only; live setup unavailable")
+		}
+		return nil
+	}
 	if len(args) > 0 && args[0] == "test-upstream" {
 		f := flag.NewFlagSet("test-upstream", flag.ContinueOnError)
 		address := f.String("address", "", "SOCKS5 host:port (no credentials)")
@@ -112,7 +165,7 @@ func tproxyCommand(args []string) error {
 		return err
 	}
 	if len(args) != 1 || args[0] != "probe" {
-		return fmt.Errorf("usage: ebpf-proxy tproxy probe | test-upstream --address HOST:PORT | poc-isolated | relay-isolated | socks5-isolated (isolated PoCs require unshare -n)")
+		return fmt.Errorf("usage: ebpf-proxy tproxy preflight --config FILE [-probe-upstream] | probe | test-upstream --address HOST:PORT | poc-isolated | relay-isolated | socks5-isolated (isolated PoCs require unshare -n)")
 	}
 	e := json.NewEncoder(os.Stdout)
 	e.SetIndent("", "  ")

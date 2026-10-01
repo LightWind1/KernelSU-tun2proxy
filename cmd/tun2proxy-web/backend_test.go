@@ -2,9 +2,86 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestTPROXYPreflightDoesNotCreateRuntime(t *testing.T) {
+	dir := t.TempDir()
+	oldConfig, oldRun := configFile, runDir
+	defer func() { configFile, runDir = oldConfig, oldRun }()
+	configFile = filepath.Join(dir, "config.json")
+	runDir = filepath.Join(dir, "must-not-exist")
+	b, _ := json.Marshal(Config{ProxyURL: "http://name:private-password@192.0.2.1:8083", RouteMode: "off"})
+	if e := os.WriteFile(configFile, b, 0600); e != nil {
+		t.Fatal(e)
+	}
+	out, e := backendAction("tproxy-preflight")
+	if e == nil || strings.Contains(out+e.Error(), "private-password") {
+		t.Fatal("HTTP converted or credential leaked")
+	}
+	var report map[string]any
+	if json.Unmarshal([]byte(out), &report) != nil || report["status"] != "blocked" || report["automatic_setup_allowed"] != false || report["upstream_type"] != "http" {
+		t.Fatal("missing protocol mismatch report")
+	}
+	if _, e := os.Stat(runDir); !os.IsNotExist(e) {
+		t.Fatal("read-only preflight created runtime/lock")
+	}
+	after, _ := os.ReadFile(configFile)
+	if string(after) != string(b) {
+		t.Fatal("saved configuration modified")
+	}
+}
+
+func TestTPROXYPreflightUsesPrivatePipe(t *testing.T) {
+	shell := "/bin/sh"
+	if _, e := os.Stat(shell); e != nil {
+		shell = "/system/bin/sh"
+	}
+	if _, e := os.Stat(shell); e != nil {
+		t.Skip("POSIX shell fixture unavailable")
+	}
+	dir := t.TempDir()
+	oldConfig, oldRun, oldMod := configFile, runDir, modDir
+	defer func() { configFile, runDir, modDir = oldConfig, oldRun, oldMod }()
+	configFile = filepath.Join(dir, "config.json")
+	runDir = filepath.Join(dir, "must-not-exist")
+	modDir = filepath.Join(dir, "module")
+	b, _ := json.Marshal(Config{ProxyURL: "socks5h://private-user:private-password@192.0.2.1:1080", RouteMode: "off"})
+	if e := os.WriteFile(configFile, b, 0600); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.MkdirAll(filepath.Dir(ebpfBinary()), 0700); e != nil {
+		t.Fatal(e)
+	}
+	script := "#!" + shell + `
+[ "$1" = tproxy ] && [ "$2" = preflight ] && [ "$3" = --config ] && [ "$4" = - ] && [ "$5" = --probe-upstream ] || exit 9
+IFS= read -r data
+case "$data" in
+ *'"password":"private-password"'*'"port":1080'*|*'"port":1080'*'"password":"private-password"'*) ;;
+ *) exit 9 ;;
+esac
+printf '%s\n' 'private-password' >&2
+printf '%s\n' '{"status":"blocked","network_rules_read_only":true,"automatic_setup_allowed":false}'
+exit 1
+`
+	if e := os.WriteFile(ebpfBinary(), []byte(script), 0700); e != nil {
+		t.Fatal(e)
+	}
+	out, e := backendAction("tproxy-preflight")
+	if e == nil || !json.Valid([]byte(out)) || strings.Contains(out+e.Error(), "private-password") {
+		t.Fatal("pipe/report/stderr isolation failed")
+	}
+	if _, e := os.Stat(runDir); !os.IsNotExist(e) {
+		t.Fatal("runtime created")
+	}
+	after, _ := os.ReadFile(configFile)
+	if string(after) != string(b) {
+		t.Fatal("saved configuration modified")
+	}
+}
 
 func TestBackendDefault(t *testing.T) {
 	if backendName(Config{}) != "tun" {

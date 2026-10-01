@@ -225,8 +225,8 @@ This updates the previous phase's in-process-only status, **not** its production
 gate. Unwitnessed pending intents block automatic recovery. Version-2 witnessed
 outcomes and a surviving pidfd anchor are described below; no guardian is
 automatically restarted. Whole-private-namespace snapshots are unsuitable for
-a live Android firewall that netd modifies. No host-network setup CLI, watchdog service, WebUI
-or module integration is exposed. Tests create their private state using
+a live Android firewall that netd modifies. No host-network setup CLI, watchdog service
+or WebUI interception control is exposed. Tests create their private state using
 `os.MkdirTemp` and remove only those test directories after completion. Set
 `TMPDIR=/data/local/tmp` when running tests on Android without `/tmp`.
 
@@ -265,3 +265,42 @@ supervision tree/anchor is killed. No host setup API, production restart service
 WebUI integration or mark-safety approval is introduced.
 
 Evidence and file list: `docs/TPROXY-PENDING-RECOVERY.md` in the parent repository.
+
+### Read-only live-network preflight
+
+```
+ebpf-proxy tproxy preflight --config config.json
+ebpf-proxy tproxy preflight --config - --probe-upstream
+```
+
+The second form accepts generic configuration through stdin, avoiding another
+persisted credential file. `--probe-upstream` optionally opens TCP connections
+and negotiates SOCKS5/authentication, but sends no CONNECT or payload. Neither
+form binds the listener, changes a namespace, modifies routing/firewall rules,
+loads BPF or enables interception. No setup/override option exists here.
+
+Candidate selectors are configurable using `--mark-value`, `--mark-mask`,
+`--table`, `--priority` and `--prefix`; defaults are bit 22, table 38766,
+priority 9001 and ATP_LIVE. They are not claimed to be vendor-safe. Invalid
+selectors fail before system queries. Reports distinguish query failures,
+occupied/referenced tables, priorities, chain prefixes, listener ports and
+packet-mark mask overlap. IPv4/IPv6 resources are checked even for an IPv4 PoC.
+Structural state is observed before/after; changing state blocks the report.
+Full firewall dumps and credentials are omitted from output.
+
+Preflight always returns `status=blocked`, `automatic_setup_allowed=false`,
+and exit 1 after emitting JSON. Vendor mark safety, live-resource ownership and
+a production supervisor remain required. Finite UID allowlists (at most 32)
+are required by the planned live PoC; empty, system or bypass-overlapping UIDs
+are reported, not silently changed. All-UID and IPv6 policies are not downgraded.
+This gate does not prove App interception, HTTPS MITM or crash recovery on the
+host network. Reports are observations, not authorization for later writes.
+
+The parent integration has a CLI-only `--backend-action tproxy-preflight`
+adapter reusing saved upstream/authentication/UID configuration over stdin. It
+does not create a runtime directory/lock, change profiles or enable a TPROXY
+backend. An HTTP upstream produces a protocol-mismatch report, never an implicit
+conversion to SOCKS5. Standalone preflight has no dependency on this adapter.
+
+Device evidence: `docs/TPROXY-PREFLIGHT.md` and
+`docs/tproxy-preflight-android.json` in the parent repository.

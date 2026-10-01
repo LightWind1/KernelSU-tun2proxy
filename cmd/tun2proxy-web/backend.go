@@ -2,6 +2,7 @@ package main
 
 // Integration only: the independently buildable core never reads module config.
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -185,6 +186,12 @@ func legacyCtl(action string) (string, error) {
 	return string(b), e
 }
 func backendAction(action string) (string, error) {
+	// Read-only CLI diagnostics must not create runtime directories/locks or
+	// persist a second copy of credentials. Existing connection settings remain
+	// authoritative; the independently buildable core receives a private pipe.
+	if action == "tproxy-preflight" {
+		return tproxyPreflightAction()
+	}
 	if e := os.MkdirAll(runDir, 0755); e != nil {
 		return "", e
 	}
@@ -302,6 +309,53 @@ func backendAction(action string) (string, error) {
 	_ = cmd.Process.Kill()
 	<-done
 	return "", errors.New("eBPF readiness timeout; native links detached")
+}
+
+func tproxyPreflightAction() (string, error) {
+	c, e := loadConfig()
+	if e != nil {
+		return "", e
+	}
+	u, parseErr := url.Parse(c.ProxyURL)
+	if parseErr != nil || u.Hostname() == "" {
+		return "", errors.New("invalid saved upstream")
+	}
+	if u.Scheme != "socks5" && u.Scheme != "socks5h" {
+		// Reject protocol mismatch before listing apps or running diagnostics.
+		// Never infer SOCKS5 from an HTTP proxy's port, even if it speaks both.
+		b, _ := json.MarshalIndent(map[string]any{"version": 1, "status": "blocked", "network_rules_read_only": true, "automatic_setup_allowed": false, "upstream": net.JoinHostPort(u.Hostname(), u.Port()), "upstream_type": u.Scheme, "blocking_reasons": []string{"SAVED_UPSTREAM_IS_NOT_SOCKS5"}}, "", "  ")
+		return string(b), errors.New("TPROXY requires an explicitly saved SOCKS5 upstream; existing connection configuration was not changed")
+	}
+	var apps []AppEntry
+	if c.RouteMode == "selected" {
+		apps, e = appsList()
+		if e != nil {
+			return "", e
+		}
+	}
+	core, e := ebpfConfig(c, apps)
+	if e != nil {
+		return "", e
+	}
+	b, e := json.Marshal(core)
+	if e != nil {
+		return "", e
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, ebpfBinary(), "tproxy", "preflight", "--config", "-", "--probe-upstream")
+	cmd.Stdin = bytes.NewReader(b)
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	// Never forward arbitrary child stderr (or serialized configuration).
+	e = cmd.Run()
+	if !json.Valid(stdout.Bytes()) {
+		return "", errors.New("TPROXY preflight did not return a valid report")
+	}
+	if e != nil {
+		return stdout.String(), errors.New("TPROXY_PREFLIGHT_BLOCKED: inspect the read-only report; no setup performed")
+	}
+	return stdout.String(), nil
 }
 func backendCLI() bool {
 	if len(os.Args) != 3 || os.Args[1] != "--backend-action" {
