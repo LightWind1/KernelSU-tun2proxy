@@ -202,3 +202,33 @@ alter resources externally. A durable intent journal, namespace-bound ownership
 verification, preflight conflict checks and an independent watchdog are still
 required before live setup/repair is exposed. Nothing here claims mark safety
 on a vendor ROM or SIGKILL recovery. No new WebUI or module backend is enabled.
+
+### Experimental durable recovery (isolated namespaces only)
+
+`journal.go` defines a versioned, size-bounded record with boot ID, namespace,
+typed plan, committed owned-step count, pending intent and snapshot digest.
+`journal_linux.go` provides `OpenDurableIsolated`, `Setup` and `Recover`; it
+refuses the host namespace. Records never carry executable commands. Recovery
+regenerates the plan and requires an independently supplied matching plan.
+Private state must be owned 0700 directories and owned single-link 0600 files;
+symlinks are refused. File/directory fsync, atomic rename and nonblocking flock
+provide durable commits and one cooperative cross-process owner.
+
+`guardian_linux.go` provides `WatchIsolatedWorker` for a surviving parent. It
+waits for the actual child exit, then reopens the journal and removes exact
+owned resources, starting with OUTPUT interception. Android tests SIGKILL the
+worker at 8 committed add and 8 committed remove boundaries. Repeated recovery,
+concurrent-owner exclusion and refusal of unexpected external changes are
+tested. An initial journal-write failure must leave the kernel unchanged.
+
+This updates the previous phase's in-process-only status, **not** its production
+gate. A pending intent between command execution and durable commit is still
+ambiguous and blocks automatic recovery. A killed guardian is not automatically
+restarted. Whole-private-namespace snapshots are unsuitable for a live Android
+firewall that netd modifies. No host-network setup CLI, watchdog service, WebUI
+or module integration is exposed. Tests create their private state using
+`os.MkdirTemp` and remove only those test directories after completion. Set
+`TMPDIR=/data/local/tmp` when running tests on Android without `/tmp`.
+
+Parent-repository evidence: `docs/TPROXY-RECOVERY.md`. This document and the
+test fixtures remain independent of KernelSU/Yakit runtime dependencies.
