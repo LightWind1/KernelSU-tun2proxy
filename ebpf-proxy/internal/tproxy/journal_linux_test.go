@@ -45,6 +45,9 @@ func TestDurableHostNamespaceRejected(t *testing.T) {
 	if _, e := WatchIsolatedWorker(nil, "/nonexistent-tproxy-state", journalPlan()); e == nil {
 		t.Fatal("host guardian admitted")
 	}
+	if _, e := WatchIsolatedPIDFD(context.Background(), 0, "/nonexistent-tproxy-state", journalPlan()); e == nil {
+		t.Fatal("host pidfd guardian admitted")
+	}
 }
 
 func TestJournalCrashWorker(t *testing.T) {
@@ -67,12 +70,21 @@ func TestJournalCrashWorker(t *testing.T) {
 	}
 	defer l.Close()
 	operation := os.Getenv("TP_JOURNAL_OPERATION")
+	stage := os.Getenv("TP_JOURNAL_STAGE")
+	freeze := func() {
+		fmt.Println("COMMITTED_READY")
+		for {
+			time.Sleep(time.Hour)
+		}
+	}
 	d.hook = func(intent string, owned int) {
-		if intent == operation && owned == n {
-			fmt.Println("COMMITTED_READY")
-			for {
-				time.Sleep(time.Hour)
-			}
+		if stage == "" && intent == operation && owned == n {
+			freeze()
+		}
+	}
+	d.boundaryHook = func(point, intent string, owned int) {
+		if point == stage && intent == operation && owned == n {
+			freeze()
 		}
 	}
 	if e = d.Setup(); e != nil {
@@ -91,7 +103,7 @@ func TestPrivilegedJournalRecovery(t *testing.T) {
 		if os.Getenv("TP_RUN_PRIVILEGED") != "1" {
 			t.Skip("privileged opt-in")
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 		defer cancel()
 		c := exec.CommandContext(ctx, "unshare", "-n", os.Args[0], "-test.run=^TestPrivilegedJournalRecovery$", "-test.v")
 		c.Env = append(os.Environ(), "TP_JOURNAL_CHILD=1")

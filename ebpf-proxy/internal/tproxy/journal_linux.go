@@ -3,8 +3,6 @@
 package tproxy
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,17 +15,19 @@ import (
 )
 
 // DurableIsolated is intentionally NOT a host-network setup API. A private
-// namespace and exclusive private state directory are required. Ambiguous
-// write-ahead intents or changed snapshots require manual investigation; this
-// controller never guesses ownership and never executes a journal command.
+// namespace and exclusive cooperative writer are required. Version-2 pending
+// intents admit only an individually verified single-operation outcome with
+// unchanged residual state. Legacy/unverifiable intents and foreign changes
+// still require investigation; journals never contain executable commands.
 type DurableIsolated struct {
-	mu     sync.Mutex
-	root   *os.Root
-	lock   *os.File
-	r      journalRecord
-	steps  []Step
-	hook   func(string, int) // committed-boundary crash seam, tests only
-	closed bool
+	mu           sync.Mutex
+	root         *os.Root
+	lock         *os.File
+	r            journalRecord
+	steps        []Step
+	hook         func(string, int)         // committed-boundary crash seam, tests only
+	boundaryHook func(string, string, int) // intent/applied crash seam, tests only
+	closed       bool
 }
 
 func privateFile(f *os.File) error {
@@ -94,7 +94,7 @@ func OpenDurableIsolated(dir string, plan IPv4DestinationPlan) (*DurableIsolated
 	if e = unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); e != nil {
 		return fail(fmt.Errorf("state locked: %w", e))
 	}
-	d := &DurableIsolated{root: root, lock: lock, steps: steps, r: journalRecord{Version: 1, Namespace: ns, Boot: strings.TrimSpace(string(boot)), Plan: plan}}
+	d := &DurableIsolated{root: root, lock: lock, steps: steps, r: journalRecord{Version: 2, Namespace: ns, Boot: strings.TrimSpace(string(boot)), Plan: plan}}
 	f, e := root.OpenFile("journal.json", os.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
 	if os.IsNotExist(e) {
 		return d, nil
@@ -133,17 +133,11 @@ func (d *DurableIsolated) Close() error {
 }
 
 func isolatedSnapshot() (string, error) {
-	var outputs []string
-	for _, args := range [][]string{{"iptables", "-w", "2", "-t", "mangle", "-S"}, {"ip", "rule", "show"}, {"ip", "route", "show", "table", "all"}} {
-		r := query(args)
-		if e := commandError(r); e != nil {
-			return "", e
-		}
-		outputs = append(outputs, r.Output)
+	outputs, e := captureNamespace()
+	if e != nil {
+		return "", e
 	}
-	b, _ := json.Marshal(outputs)
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:]), nil
+	return stateDigest(outputs), nil
 }
 
 func (d *DurableIsolated) save() error {
@@ -259,10 +253,23 @@ func (d *DurableIsolated) change(intent string) error {
 	if e := d.check(); e != nil {
 		return e
 	}
+	w, e := observeResources(d.r.Plan)
+	if e != nil {
+		return e
+	}
+	if w.Whole != d.r.Snapshot || !countsMatch(w.Counts, d.r.Owned) {
+		return fmt.Errorf("owned resources differ before intent")
+	}
+	before := d.r
+	d.r.Version = 2
 	d.r.Pending = intent
+	d.r.PendingProof = w.Residual
 	if e := d.save(); e != nil {
 		return e
 	} // write intent before mutating the kernel
+	if d.boundaryHook != nil {
+		d.boundaryHook("intent", intent, d.r.Owned)
+	}
 	index := d.r.Owned
 	var args []string
 	if intent == "add" {
@@ -274,6 +281,9 @@ func (d *DurableIsolated) change(intent string) error {
 	if e := commandError(query(args)); e != nil {
 		return e
 	} // completion may be ambiguous
+	if d.boundaryHook != nil {
+		d.boundaryHook("applied", intent, d.r.Owned)
+	}
 	if intent == "add" {
 		d.r.Owned++
 	} else {
@@ -281,12 +291,17 @@ func (d *DurableIsolated) change(intent string) error {
 	}
 	s, e := isolatedSnapshot()
 	if e != nil {
+		d.r.Owned = before.Owned
 		return e
 	}
 	d.r.Snapshot = s
 	d.r.Pending = ""
+	d.r.PendingProof = ""
 	if e = d.save(); e != nil {
+		d.r.Owned = before.Owned
+		d.r.Snapshot = before.Snapshot
 		d.r.Pending = intent
+		d.r.PendingProof = w.Residual
 		return e
 	}
 	if d.hook != nil {
@@ -296,10 +311,18 @@ func (d *DurableIsolated) change(intent string) error {
 }
 
 // Recover disables the entrance first, then removes exact owned dependencies.
-// It is repeatable across separate processes only at committed boundaries.
+// Committed and precisely witnessed version-2 pending boundaries are supported.
 func (d *DurableIsolated) Recover() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.closed {
+		return fmt.Errorf("controller closed")
+	}
+	if d.r.Pending != "" {
+		if e := d.reconcile(); e != nil {
+			return e
+		}
+	}
 	if e := d.check(); e != nil {
 		return e
 	}
@@ -309,4 +332,51 @@ func (d *DurableIsolated) Recover() error {
 		}
 	}
 	return nil
+}
+
+// reconcile admits only the two precisely witnessed outcomes: no operation,
+// or exactly one planned resource addition/removal with unchanged residual.
+func (d *DurableIsolated) reconcile() error {
+	if d.r.Version != 2 || d.r.PendingProof == "" {
+		return fmt.Errorf("unwitnessed legacy intent: refusing recovery")
+	}
+	w, e := observeResources(d.r.Plan)
+	if e != nil {
+		return e
+	}
+	if w.Residual != d.r.PendingProof {
+		return fmt.Errorf("foreign change during pending intent")
+	}
+	owned := d.r.Owned
+	after := owned + 1
+	if d.r.Pending == "remove" {
+		after = owned - 1
+	}
+	if countsMatch(w.Counts, after) {
+		owned = after
+	} else if !countsMatch(w.Counts, owned) {
+		return fmt.Errorf("pending outcome not a single planned operation")
+	}
+	old := d.r
+	d.r.Owned = owned
+	d.r.Snapshot = w.Whole
+	d.r.Pending = ""
+	d.r.PendingProof = ""
+	if e = d.save(); e != nil {
+		d.r = old
+		return e
+	}
+	return nil
+}
+
+func (d *DurableIsolated) ResolvePending() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.closed {
+		return fmt.Errorf("controller closed")
+	}
+	if d.r.Pending != "" {
+		return d.reconcile()
+	}
+	return d.check()
 }

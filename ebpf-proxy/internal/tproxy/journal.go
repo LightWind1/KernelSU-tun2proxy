@@ -12,13 +12,14 @@ import (
 // Records contain typed configuration, never executable argv. Recovery also
 // requires the independently supplied expected plan, namespace and boot ID.
 type journalRecord struct {
-	Version   int                 `json:"version"`
-	Namespace string              `json:"namespace"`
-	Boot      string              `json:"boot"`
-	Plan      IPv4DestinationPlan `json:"plan"`
-	Owned     int                 `json:"owned"`
-	Pending   string              `json:"pending,omitempty"`
-	Snapshot  string              `json:"snapshot"`
+	Version      int                 `json:"version"`
+	Namespace    string              `json:"namespace"`
+	Boot         string              `json:"boot"`
+	Plan         IPv4DestinationPlan `json:"plan"`
+	Owned        int                 `json:"owned"`
+	Pending      string              `json:"pending,omitempty"`
+	Snapshot     string              `json:"snapshot"`
+	PendingProof string              `json:"pending_proof,omitempty"`
 }
 
 func decodeJournal(b []byte, plan IPv4DestinationPlan, namespace, boot string) (journalRecord, error) {
@@ -39,7 +40,7 @@ func decodeJournal(b []byte, plan IPv4DestinationPlan, namespace, boot string) (
 	if e != nil {
 		return r, e
 	}
-	if r.Version != 1 || r.Namespace != namespace || r.Boot != boot || r.Plan != plan || r.Owned < 0 || r.Owned > len(steps) {
+	if (r.Version != 1 && r.Version != 2) || r.Namespace != namespace || r.Boot != boot || r.Plan != plan || r.Owned < 0 || r.Owned > len(steps) {
 		return r, fmt.Errorf("journal identity/configuration mismatch")
 	}
 	if r.Pending != "" && r.Pending != "add" && r.Pending != "remove" {
@@ -50,6 +51,11 @@ func decodeJournal(b []byte, plan IPv4DestinationPlan, namespace, boot string) (
 	}
 	if digest, e := hex.DecodeString(r.Snapshot); e != nil || len(digest) != sha256.Size {
 		return r, fmt.Errorf("invalid snapshot digest")
+	}
+	if r.PendingProof != "" {
+		if digest, e := hex.DecodeString(r.PendingProof); e != nil || len(digest) != sha256.Size || r.Version != 2 || r.Pending == "" {
+			return r, fmt.Errorf("invalid pending witness")
+		}
 	}
 	return r, nil
 }

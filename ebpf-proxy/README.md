@@ -222,13 +222,46 @@ concurrent-owner exclusion and refusal of unexpected external changes are
 tested. An initial journal-write failure must leave the kernel unchanged.
 
 This updates the previous phase's in-process-only status, **not** its production
-gate. A pending intent between command execution and durable commit is still
-ambiguous and blocks automatic recovery. A killed guardian is not automatically
-restarted. Whole-private-namespace snapshots are unsuitable for a live Android
-firewall that netd modifies. No host-network setup CLI, watchdog service, WebUI
+gate. Unwitnessed pending intents block automatic recovery. Version-2 witnessed
+outcomes and a surviving pidfd anchor are described below; no guardian is
+automatically restarted. Whole-private-namespace snapshots are unsuitable for
+a live Android firewall that netd modifies. No host-network setup CLI, watchdog service, WebUI
 or module integration is exposed. Tests create their private state using
 `os.MkdirTemp` and remove only those test directories after completion. Set
 `TMPDIR=/data/local/tmp` when running tests on Android without `/tmp`.
 
 Parent-repository evidence: `docs/TPROXY-RECOVERY.md`. This document and the
 test fixtures remain independent of KernelSU/Yakit runtime dependencies.
+
+### Witnessed pending outcomes and replacement guardian
+
+Version 2 adds `pending_proof`, a digest of the namespace excluding individually
+verified planned resources. Before every mutation the controller checks all
+eight resources and commits that witness. After a crash, only the original
+owned-step profile or exactly one planned add/remove is admissible, with an
+unchanged residual digest. Rule checks use exact `iptables -C`; unknown,
+duplicate or mismatched resources are rejected, not adopted. Changes during
+observation are also rejected. Version 1 stays readable, but legacy pending
+intents without a witness still refuse automatic recovery.
+
+The Android suite SIGKILLs workers in 32 pending windows: before/after the kernel
+operation, for all eight add and eight remove operations. Committed-boundary
+tests remain intact. A foreign chain introduced in a pending window is preserved
+and blocks recovery until that change is removed by its owner.
+
+`WatchIsolatedPIDFD` allows a surviving trusted anchor to replace a lost
+guardian. It duplicates and validates a trusted pidfd, polls for that actual
+process to exit, then acquires the state lock and recovers. It does not accept a
+PID to kill, signal processes, or claim an unknown exit code. Cancellation and
+ordinary non-pidfd files do not trigger cleanup. The test launcher pins the
+worker identity while the original guardian is alive and verifies start time;
+only the verified test pidfd is signalled. A real guardian SIGKILL and live
+orphan/lock-exclusion test passes on the tested Android device.
+
+These proofs assume an exclusive cooperative writer in a private namespace.
+An external privileged actor recreating an identical planned resource cannot be
+distinguished from the original writer. There is no guarantee after the entire
+supervision tree/anchor is killed. No host setup API, production restart service,
+WebUI integration or mark-safety approval is introduced.
+
+Evidence and file list: `docs/TPROXY-PENDING-RECOVERY.md` in the parent repository.
