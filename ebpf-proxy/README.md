@@ -484,13 +484,59 @@ command identity. Keep the returned witness pointer in a trusted surviving
 anchor bound to the exact state/plan. `Wait` reaps; `Abort` kills/reaps only this
 owned direct command. Cancel the launch context to interrupt a running Wait.
 
-This is a **local trusted-launcher primitive**, not a completed cross-process
-anchor registration protocol. The existing guard dispatch understands the new
+`Admit` is a **local trusted-launcher primitive**; the cross-process opt-in
+`HandoffScoped` alternative is described below. The guard dispatch understands the
 stub token, but its ordinary v1 runner and the supervisor remain unchanged.
 No automatic safe-recovery claim applies to those old paths. Production still
-needs authenticated descriptor transfer, anchor acknowledgement before release,
-and tests of anchor/guard loss at each handoff boundary. Arbitrary descendants,
+needs deployment of a registered runner/surviving anchor using the protocol below,
+and tests of integrated guard loss at every command boundary. Arbitrary descendants,
 all-anchor loss, host-network activation and mark-risk override remain outside
 admission. Android tests prove refused commands have no file side effect and
 an admitted real iptables chain is created/deleted only in a private netns.
 Evidence: `docs/TPROXY-COMMAND-ADMISSION.md` in the parent repository.
+
+### Cross-process command registration (isolated, one-shot)
+
+`paused.HandoffScoped(ctx, channelFd, workerPidfd, guardPidfd, stateDir, plan)`
+transfers three live pidfds **and the execution gate** via SCM_RIGHTS to an
+independent anchor. Use a fresh inherited AF_UNIX/SOCK_SEQPACKET socketpair for
+each command; no public IPC pathname or multiplexing is implemented.
+
+The trusted launcher creates the receiver using
+`NewScopedCommandAnchor(channelFd, expectedWorkerPidfd, expectedGuardPidfd,
+stateDir, plan)`. `anchor.Accept(ctx)` checks pre-pinned role identities, namespace,
+exact packet/FD count and state/plan binding, then owns a witness before echoing
+the versioned nonce ACK. Sender validates it and sends a nonce-bound confirmation;
+only then does the anchor release the exec gate. Sender
+does not keep a second gate capability. An anchor killed before release causes
+EOF/refusal, including the ACK-before-release crash window. ACK only proves
+registration: `paused.Wait()` must still succeed before committing an operation.
+
+The request/ACK/confirmation state machine uses a 65-byte packet carrying
+version, random nonce and SHA-256 binding, never a
+path, command, proxy configuration or credential. Binding includes private
+directory identity/canonical path, boot, netns and exact plan. Numeric PIDs from
+pidfd metadata are used solely for live-role comparison, never signaling/adoption.
+Authentication relies on exclusive inherited capabilities plus pinned roles;
+SO_PEERCRED on an inherited socketpair is not claimed to identify a later child.
+
+Keep the `RegisteredScopedCommand` pointer returned by Accept, even if non-nil
+alongside a release error. Its `Recover(ctx)` revalidates binding and waits for
+all three exits before existing v3 recovery. Close/cancel lifetime is explicit;
+cancel Accept before concurrently closing an anchor. Anchor and sender are
+single-use. Missing/invalid ACK or confirmation refuses release without falling
+back to local/worker-only admission.
+
+Successful confirmation send is the execution commit point. Cancellation after
+commit may kill the command but cannot undo side effects; Wait still decides
+operation success. ACK alone never authorizes execution or journal commit.
+
+Android tests cover 25 cross-process cases plus directory/plan binding checks,
+including lost anchor before/after receive, before ACK and after ACK, malformed
+packets/FDs, missing/bad confirmation, timeout/cancellation, source FD closure and eight-step recovery with
+foreign rules preserved. Guard/worker roles in the new IPC fixture are trusted
+independently pinned native processes, not deployment of the existing v1 guard.
+The ordinary guard runner/supervisor/default backend remain unchanged. All-anchor
+loss after release, arbitrary descendants, noncooperative privileged writers,
+production UID/IPv6 lifecycle and host mark safety remain unadmitted.
+Evidence: `docs/TPROXY-COMMAND-HANDOFF.md` in the parent repository.

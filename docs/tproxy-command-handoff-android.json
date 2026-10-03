@@ -1,0 +1,65 @@
+{
+  "phase": "isolated-one-shot-cross-process-command-handoff",
+  "date": "2026-10-03",
+  "device": {
+    "android": "15",
+    "sdk": 35,
+    "kernel": "5.10.236-android12-9-00003-gfb24cf99ad97-ab14313284",
+    "root_domain": "u:r:ksu:s0",
+    "selinux": "Enforcing",
+    "host_netns": "net:[4026532071]"
+  },
+  "protocol": {
+    "version": 1,
+    "packet_bytes": 65,
+    "request_rights": 4,
+    "ack_and_confirmation_rights": 0,
+    "transport": "exclusive inherited Unix SOCK_SEQPACKET with SCM_RIGHTS",
+    "authentication": "inherited capability and pre-pinned expected worker/guard roles",
+    "state_binding": "canonical directory path/device/inode, boot, netns, exact plan SHA-256",
+    "execution_commit": "sender nonce-bound confirmation successfully sent",
+    "release_gate_owner": "independent anchor after transfer"
+  },
+  "tests": {
+    "final_handoff_cases": 25,
+    "final_handoff_seconds": 10.53,
+    "binding_seconds": 0.07,
+    "final_handoff": "PASS",
+    "all_three_exits_recovery": "8 steps clean; foreign fixture preserved; source FDs closed",
+    "full_native_regression": "PASS exit 0; compiled before final confirmation hardening",
+    "final_protocol_and_binding": "separately recompiled and rerun after hardening",
+    "final_windows_core": "PASS",
+    "final_linux_arm64_vet": "PASS",
+    "final_android_native_bpf_build": "PASS",
+    "certificate_yakit_unit_tests": "PASS",
+    "app_picker_backend_node": "PASS",
+    "module_android_build": "PASS",
+    "module_native_android_tests": "PASS"
+  },
+  "host_baseline": {
+    "ipv4_rules_unchanged": true,
+    "ipv6_rules_unchanged": true,
+    "ipv4_table_38766_empty_unchanged": true,
+    "ipv6_table_38766_empty_unchanged": true,
+    "project_resources_absent": true,
+    "mangle_snapshot_unchanged": false,
+    "both_families_removed": "-A tc_limiter_OUTPUT -m owner --uid-owner 10174 -j CONNMARK --set-xmark 0x10000000/0x10000000",
+    "actor": "untraced; no whole-firewall restore attempted"
+  },
+  "old_default_guard_runner_modified": false,
+  "old_supervisor_modified": false,
+  "webui_modified": false,
+  "host_setup": false,
+  "netd_bpf_modified": false,
+  "module_installed": false,
+  "release_zip_created": false,
+  "production_anchor_deployed": false,
+  "limitations": [
+    "one command per fresh inherited channel; no multiplexed persistent registry",
+    "IPC role fixtures are independently pinned native processes, not integrated v1 guard deployment",
+    "all-anchor loss after release, unknown descendants, hostile root writers unadmitted",
+    "post-confirmation cancellation cannot undo already executing command side effects",
+    "host mark collision unresolved; no explicit override"
+  ],
+  "next_gate": "explicit registered runner and actual guard/supervisor anchor integration"
+}
