@@ -51,7 +51,7 @@ func scopedCleanup(o SupervisorOptions, dir string, p IPv4DestinationPlan) (int,
 		return 0, e
 	}
 	defer d.Close()
-	d.run = func(args []string) Result { return queryContext(ctx, args) }
+	d.run = func(args []string) Result { return queryLeasedContext(ctx, args, d.lock) }
 	if e = d.ResolvePending(); e != nil {
 		return 0, e
 	}

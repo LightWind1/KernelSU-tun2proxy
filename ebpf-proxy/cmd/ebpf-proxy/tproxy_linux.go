@@ -21,6 +21,8 @@ import (
 	"time"
 )
 
+func commandGuardEntry() (int, bool) { return tproxy.CommandGuardEntry(os.Args) }
+
 func tproxyCommand(args []string) error {
 	if len(args) > 0 && args[0] == "preflight" {
 		f := flag.NewFlagSet("preflight", flag.ContinueOnError)

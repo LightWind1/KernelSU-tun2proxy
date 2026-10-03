@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-03",
+  "phase": "scoped surviving anchor and command lease",
+  "scope": "private disposable network namespaces",
+  "device": {
+    "serial": "5D5X5TFYDMGAEEWK",
+    "android": "15",
+    "sdk": 35,
+    "kernel": "5.10.236-android12-9-00003-gfb24cf99ad97-ab14313284",
+    "uid": 0,
+    "selinuxDomain": "u:r:ksu:s0",
+    "selinux": "Enforcing",
+    "hostNetworkNamespace": "net:[4026532071]"
+  },
+  "implementation": {
+    "scopedPidfdAnchor": true,
+    "guardInheritsSameJournalOpenFileDescription": true,
+    "guardWaitsDirectCommandBeforeReleasingLease": true,
+    "cancellationUsesGuardTermThenChildKillAndWait": true,
+    "strictJournalModesPreserved": true,
+    "nativeGuardDispatch": true,
+    "coreConfigFieldsAdded": []
+  },
+  "tests": {
+    "targeted": {
+      "status": "PASS",
+      "survivorSeconds": 9.12,
+      "cancellationSeconds": 0.11
+    },
+    "fullNative": {
+      "status": "PASS",
+      "exitCode": 0,
+      "command": "TMPDIR=/data/local/tmp TP_RUN_PRIVILEGED=1 /data/local/tmp/tproxy-survivor-tests -test.v",
+      "strictCommittedWindows": 16,
+      "strictCommittedSeconds": 52.59,
+      "strictPendingWindows": 32,
+      "strictPendingSeconds": 104.45,
+      "scopedLifecycleSeconds": 47.72,
+      "scopedPendingWindows": 32,
+      "scopedPendingSeconds": 291.91,
+      "boundedSupervisorSeconds": 119.15,
+      "supervisorAdmissionSeconds": 10.67,
+      "scopedSurvivorSeconds": 13.83,
+      "commandCancellationSeconds": 0.22
+    },
+    "otherPassed": [
+      "Windows standalone go test -count=1 ./...",
+      "Linux arm64 go vet ./...",
+      "Android standalone native and BPF build",
+      "certificate and Yakit Go tests",
+      "Node App picker and backend tests",
+      "module backend compile",
+      "fresh native module tests on Android"
+    ],
+    "standaloneCliHostGuard": {
+      "expectedExitCode": 1,
+      "actualExitCode": 1
+    },
+    "invocationIssue": "initial combined regex selector was split by ADB shell quoting; corrected to separate invocations; not counted as a passing test"
+  },
+  "verifiedRecovery": {
+    "supervisorAndWorkerKilled": true,
+    "commandAndGuardSurvived": true,
+    "prematureRecoveryBlocked": "state locked",
+    "blockedRecoveryKernelMutations": 0,
+    "commandAndGuardExitPinnedByPidfd": true,
+    "pendingAddReconciled": true,
+    "recoveredSteps": 8,
+    "clean": true,
+    "foreignFixturePreserved": true,
+    "cancelledCommandAndGuardExitObserved": true
+  },
+  "hostBaseline": {
+    "normalization": "CRLF to LF; terminal newlines removed",
+    "checks": [
+      {
+        "name": "Mangle4",
+        "beforeExitCode": 0,
+        "afterExitCode": 0,
+        "identical": false
+      },
+      {
+        "name": "Rules6",
+        "beforeExitCode": 0,
+        "afterExitCode": 0,
+        "identical": true
+      },
+      {
+        "name": "Table6",
+        "beforeExitCode": 0,
+        "afterExitCode": 0,
+        "identical": true
+      },
+      {
+        "name": "Rules4",
+        "beforeExitCode": 0,
+        "afterExitCode": 0,
+        "identical": true
+      },
+      {
+        "name": "Mangle6",
+        "beforeExitCode": 0,
+        "afterExitCode": 0,
+        "identical": false
+      },
+      {
+        "name": "Table4",
+        "beforeExitCode": 0,
+        "afterExitCode": 0,
+        "identical": true
+      }
+    ],
+    "allSnapshotsIdentical": false,
+    "mangleDifferences": {
+      "Mangle4": {
+        "removed": [
+          "-A tc_limiter_OUTPUT -m owner --uid-owner 10225 -j CONNMARK --set-xmark 0x10000000/0x10000000"
+        ],
+        "added": [
+          "-A tc_limiter_OUTPUT -m owner --uid-owner 10174 -j CONNMARK --set-xmark 0x10000000/0x10000000",
+          "-A tc_limiter_OUTPUT -m owner --uid-owner 10127 -j CONNMARK --set-xmark 0x10000000/0x10000000",
+          "-A tc_limiter_OUTPUT -m owner --uid-owner 10124 -j CONNMARK --set-xmark 0x10000000/0x10000000",
+          "-A tc_limiter_OUTPUT -m owner --uid-owner 10122 -j CONNMARK --set-xmark 0x10000000/0x10000000"
+        ],
+        "identicalExceptTcLimiterUidRules": true,
+        "ownChainsAbsent": true
+      },
+      "Mangle6": {
+        "removed": [
+          "-A tc_limiter_OUTPUT -m owner --uid-owner 10225 -j CONNMARK --set-xmark 0x10000000/0x10000000"
+        ],
+        "added": [
+          "-A tc_limiter_OUTPUT -m owner --uid-owner 10174 -j CONNMARK --set-xmark 0x10000000/0x10000000",
+          "-A tc_limiter_OUTPUT -m owner --uid-owner 10127 -j CONNMARK --set-xmark 0x10000000/0x10000000",
+          "-A tc_limiter_OUTPUT -m owner --uid-owner 10124 -j CONNMARK --set-xmark 0x10000000/0x10000000",
+          "-A tc_limiter_OUTPUT -m owner --uid-owner 10122 -j CONNMARK --set-xmark 0x10000000/0x10000000"
+        ],
+        "identicalExceptTcLimiterUidRules": true,
+        "ownChainsAbsent": true
+      }
+    },
+    "differenceActorTraced": false,
+    "systemChainDifferencesRestored": false,
+    "reservedTable": 38766,
+    "ipv4TableEmpty": true,
+    "ipv6TableEmpty": true,
+    "ownChainsAbsent": true,
+    "priority9001Absent": true,
+    "existingTunReferencesRetained": true
+  },
+  "hostNetworkRuleWrites": false,
+  "installedModuleChanged": false,
+  "webuiChanged": false,
+  "releaseZipBuilt": false,
+  "versionIncremented": false,
+  "generatedModuleBinaryRestoredToOriginal": true,
+  "limitations": [
+    "not a production anchor/watchdog deployment",
+    "guard SIGKILL or loss of all anchors not guaranteed fail-open",
+    "arbitrary daemonized or descriptor-discarding descendants not admitted",
+    "direct-child Wait, filesystem/fsync and uninterruptible commands not hard-real-time bounded",
+    "future embedding executable must dispatch native guard entry",
+    "real App HTTPS/Yakit, IPv6, host admission and network/backend switching not verified",
+    "mark risk override not authorized"
+  ]
+}

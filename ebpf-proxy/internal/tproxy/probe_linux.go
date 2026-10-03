@@ -65,6 +65,10 @@ func queryContext(parent context.Context, args []string) Result {
 	ctx, cancel := context.WithTimeout(parent, 8*time.Second)
 	defer cancel()
 	c := exec.CommandContext(ctx, args[0], args[1:]...)
+	return queryResult(ctx, args, c)
+}
+
+func queryResult(ctx context.Context, args []string, c *exec.Cmd) Result {
 	var stderr strings.Builder
 	c.Stderr = &stderr
 	b, err := c.Output()

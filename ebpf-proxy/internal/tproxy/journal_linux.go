@@ -3,6 +3,7 @@
 package tproxy
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -112,6 +113,7 @@ func openDurableIsolated(dir string, plan IPv4DestinationPlan, scoped bool) (*Du
 	d.run = query
 	if scoped {
 		d.r.Version = 3
+		d.run = func(args []string) Result { return queryLeasedContext(context.Background(), args, d.lock) }
 	}
 	f, e := root.OpenFile("journal.json", os.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
 	if os.IsNotExist(e) {

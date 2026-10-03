@@ -374,8 +374,57 @@ timeout can leave a journaled partial state and blocks restart. File I/O/fsync
 and a faulty blocking factory are not hard-real-time bounded by this API.
 
 This is not production watchdog deployment or a guarantee after the supervisor
-is killed. Descendant command/process quiescence after arbitrary crashes,
-surviving anchors, readiness authenticity and host admission remain required.
-Tests kill steady-state fixtures; they do not certify command-orphan handling.
+is killed. The subsequent scoped anchor/command-lease experiment below covers
+a surviving trusted parent and a guarded in-flight direct command; arbitrary
+process-tree crashes, readiness authenticity and host admission remain required.
+The initial bounded-supervisor tests killed only steady-state fixtures.
 No WebUI, installed backend selection, CA lifecycle or connection configuration
 is changed. Evidence: `docs/TPROXY-BOUNDED-SUPERVISOR.md` in the parent repository.
+
+### Scoped surviving anchor and command lease
+
+`WatchScopedIsolatedPIDFD(ctx, trustedWorkerPidfd, stateDir, plan)` explicitly
+recovers v3 state after the kernel-pinned worker exits. It duplicates the
+descriptor, validates pidfd type, polls with cancellation, never signals the
+worker and never reports an unobserved exit code. It rejects the host netns.
+Recovery observes the caller's context; a cancelled observer does not adopt
+ownership. Strict `WatchIsolatedPIDFD` continues to use strict v1/v2 recovery.
+
+All default v3 controller observations/mutations, including supervised and
+anchor recovery, now execute through a native re-exec command guard. The guard
+inherits the **same open file description** for the private owned journal
+flock on FD 3. It retains that descriptor until its direct command has been
+waited/reaped, even if its original worker/launcher dies. A replacement
+controller sees `state locked` while that command is outstanding; it must not
+recover or start interception. Cancellation sends TERM to the guard; the guard
+kills/reaps its direct command before closing its lease. No shell is used.
+
+The standalone main dispatches `CommandGuardEntry(os.Args)` before normal CLI
+parsing. Native tests dispatch the same entry in `TestMain`. A future embedding
+executable must preserve this dispatch; copying this directory as a standalone
+project already preserves it. Omitting dispatch is unsupported; there is no
+fallback to an unleased runner. This internal helper accepts
+only privileged trusted caller argv/inherited descriptors, not WebUI input or
+an IPC request. It validates private netns and the regular owned 0600 lease.
+
+The guard's direct child receives the lease as an additional layer and uses
+Linux PDEATHSIG with the guard's creating thread kept alive through Wait.
+However, this is **not** an arbitrary process-tree guarantee: unrelated guard
+SIGKILL, all-anchor loss, executables that daemonize/close inherited descriptors,
+uninterruptible kernel commands and external noncooperative privileged writers
+remain limitations. The 8-second command context is not a hard wall-clock
+quiescence guarantee; ownership remains blocked until the lease is released.
+The supported experiment is a surviving guard around a trusted direct command,
+with a surviving anchor pinning identities before launcher loss.
+
+Android fixtures kill the actual bounded supervisor and worker while the final
+entry-rule command is paused after its durable pending intent. The surviving
+guard blocks ownership with zero recovery mutations; after the command is
+released and both command/guard exits are observed via pidfd, the scoped anchor
+reconciles the actual applied rule and removes eight owned steps. Unrelated
+netd-shaped fixtures remain intact. A separate cancellation test verifies
+command/guard exit and lock reacquisition without kernel mutations.
+
+Still no production anchor deployment, host-network setup, mark-risk override,
+UID production planner, IPv6 recovery or WebUI backend activation. Evidence:
+`docs/TPROXY-SCOPED-SURVIVOR.md` in the parent repository.

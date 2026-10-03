@@ -17,6 +17,9 @@ import (
 )
 
 func main() {
+	if code, handled := commandGuardEntry(); handled {
+		os.Exit(code)
+	}
 	if e := execute(); e != nil {
 		log.Print(e)
 		os.Exit(1)

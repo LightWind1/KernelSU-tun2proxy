@@ -93,6 +93,18 @@ func recoverIsolatedExitMode(result *GuardianResult, dir string, plan IPv4Destin
 // for the pinned process identity to exit before trying to acquire ownership.
 // Deployment/restart of that anchor remains the integrator's responsibility.
 func WatchIsolatedPIDFD(ctx context.Context, fd int, dir string, plan IPv4DestinationPlan) (GuardianResult, error) {
+	return watchIsolatedPIDFD(ctx, fd, dir, plan, false)
+}
+
+// WatchScopedIsolatedPIDFD is the explicit v3 surviving-anchor counterpart.
+// It never signals the process or converts a strict journal into scoped state.
+// A live command guard keeps the journal locked even after worker exit: that
+// condition returns blocked, and the caller may retry after verified exit.
+func WatchScopedIsolatedPIDFD(ctx context.Context, fd int, dir string, plan IPv4DestinationPlan) (GuardianResult, error) {
+	return watchIsolatedPIDFD(ctx, fd, dir, plan, true)
+}
+
+func watchIsolatedPIDFD(ctx context.Context, fd int, dir string, plan IPv4DestinationPlan, scoped bool) (GuardianResult, error) {
 	r := GuardianResult{ExitCode: -1}
 	ns, e := os.Readlink("/proc/self/ns/net")
 	if e != nil {
@@ -133,6 +145,27 @@ func WatchIsolatedPIDFD(ctx context.Context, fd int, dir string, plan IPv4Destin
 		}
 	}
 	r.ExitObserved = true
-	e = recoverIsolatedExit(&r, dir, plan)
+	if e = ctx.Err(); e != nil {
+		return r, e
+	}
+	if scoped {
+		d, openErr := OpenScopedIsolated(dir, plan)
+		if openErr != nil {
+			return r, openErr
+		}
+		defer d.Close()
+		d.run = func(args []string) Result { return queryLeasedContext(ctx, args, d.lock) }
+		r.Reconciled = d.r.Pending != ""
+		if e = d.ResolvePending(); e == nil {
+			r.RecoveredSteps = d.r.Owned
+			e = d.Recover()
+		}
+		r.Clean = e == nil && ctx.Err() == nil && d.r.Owned == 0
+		if e == nil {
+			e = ctx.Err()
+		}
+	} else {
+		e = recoverIsolatedExit(&r, dir, plan)
+	}
 	return r, e
 }
