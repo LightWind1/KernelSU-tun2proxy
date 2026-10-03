@@ -18,9 +18,13 @@ type resourceWitness struct {
 }
 
 func captureNamespace() ([]string, error) {
+	return captureNamespaceWith(query)
+}
+
+func captureNamespaceWith(run func([]string) Result) ([]string, error) {
 	var outputs []string
 	for _, args := range [][]string{{"iptables", "-w", "2", "-t", "mangle", "-S"}, {"ip", "rule", "show"}, {"ip", "route", "show", "table", "all"}} {
-		r := query(args)
+		r := run(args)
 		if e := commandError(r); e != nil {
 			return nil, e
 		}

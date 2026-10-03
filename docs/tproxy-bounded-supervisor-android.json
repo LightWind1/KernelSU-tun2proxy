@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-03",
+  "phase": "bounded scoped supervisor",
+  "scope": "disposable private network namespaces only",
+  "device": {
+    "serial": "5D5X5TFYDMGAEEWK",
+    "android": "15",
+    "sdk": 35,
+    "kernel": "5.10.236-android12-9-00003-gfb24cf99ad97-ab14313284",
+    "uid": 0,
+    "selinuxDomain": "u:r:ksu:s0",
+    "selinux": "Enforcing",
+    "hostNetworkNamespace": "net:[4026532071]"
+  },
+  "tests": {
+    "initialBounded": {
+      "status": "FAIL",
+      "seconds": 83.21,
+      "reason": "3-second TERM grace prematurely escalated normal cleanup to KILL; no-KILL assertion failed"
+    },
+    "correctedTargeted": {
+      "status": "PASS",
+      "boundedSeconds": 83.92,
+      "admissionSeconds": 7.6
+    },
+    "finalNative": {
+      "command": "TMPDIR=/data/local/tmp TP_RUN_PRIVILEGED=1 /data/local/tmp/tproxy-supervisor-tests -test.v",
+      "exitCode": 0,
+      "status": "PASS",
+      "boundedSeconds": 92.72,
+      "admissionSeconds": 9.24,
+      "strictCommittedWindows": 16,
+      "strictPendingWindows": 32,
+      "scopedPendingWindows": 32,
+      "scopedPendingSeconds": 220.56
+    },
+    "otherPassed": [
+      "standalone Windows go test -count=1 ./...",
+      "certificate and yakit Go tests",
+      "Node App picker and backend tests",
+      "Linux arm64 go vet ./...",
+      "standalone Android native and BPF build",
+      "module backend build",
+      "existing native module regression on Android"
+    ]
+  },
+  "verified": [
+    "finite crash restart budget with cleanup before retry",
+    "normal TERM without KILL",
+    "ignored TERM escalated to pidfd KILL",
+    "absent/invalid readiness rejected",
+    "startup failure before interception",
+    "factory error budget bounded and sanitized",
+    "foreign ownership conflict blocks restart",
+    "session contention and symlink refused",
+    "prestarted process not adopted",
+    "cancelled recovery performs zero kernel mutations"
+  ],
+  "hostBaseline": {
+    "normalization": "CRLF to LF; terminal newlines only removed",
+    "checks": [
+      {
+        "name": "Rules6",
+        "beforeExitCode": 0,
+        "afterExitCode": 0,
+        "identical": true
+      },
+      {
+        "name": "Table6",
+        "beforeExitCode": 0,
+        "afterExitCode": 0,
+        "identical": true
+      },
+      {
+        "name": "Mangle6",
+        "beforeExitCode": 0,
+        "afterExitCode": 0,
+        "identical": true
+      },
+      {
+        "name": "Rules4",
+        "beforeExitCode": 0,
+        "afterExitCode": 0,
+        "identical": true
+      },
+      {
+        "name": "Table4",
+        "beforeExitCode": 0,
+        "afterExitCode": 0,
+        "identical": true
+      },
+      {
+        "name": "Mangle4",
+        "beforeExitCode": 0,
+        "afterExitCode": 0,
+        "identical": true
+      }
+    ],
+    "reservedRoutingTable": 38766,
+    "ipv4TableEmpty": true,
+    "ipv6TableEmpty": true,
+    "existingTunReferencesRetained": true
+  },
+  "unchanged": [
+    "host firewall and policy routing",
+    "netd BPF programs",
+    "installed module and backend",
+    "saved connection configuration",
+    "WebUI",
+    "certificates"
+  ],
+  "releaseZipBuilt": false,
+  "versionIncremented": false,
+  "limitations": [
+    "no production supervisor deployment or supervisor-loss guarantee",
+    "no arbitrary command-descendant quiescence after worker SIGKILL",
+    "factory and filesystem/fsync are not hard-real-time bounded",
+    "conflicts/timeouts remain blocked with journal retained",
+    "no live host admission, real App HTTPS MITM or IPv6 acceptance",
+    "mark risk override not authorized"
+  ]
+}

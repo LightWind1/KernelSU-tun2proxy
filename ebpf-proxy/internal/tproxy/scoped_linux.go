@@ -168,6 +168,10 @@ func classifyScoped(p IPv4DestinationPlan, outputs []string, aliases map[string]
 }
 
 func observeScoped(p IPv4DestinationPlan) (scopedWitness, error) {
+	return observeScopedWith(p, query)
+}
+
+func observeScopedWith(p IPv4DestinationPlan, run func([]string) Result) (scopedWitness, error) {
 	steps, e := p.Steps()
 	if e != nil {
 		return scopedWitness{}, e
@@ -180,14 +184,14 @@ func observeScoped(p IPv4DestinationPlan) (scopedWitness, error) {
 				break
 			}
 		}
-		return commandError(query(args))
+		return commandError(run(args))
 	}
 	aliases := routingAliases()
 	var previous scopedWitness
 	// Two complete observations of the reserved footprint must agree. Outside
 	// netd changes are ignored; relevant changes never become a mixed witness.
 	for pass := 0; pass < 2; pass++ {
-		outputs, e := captureNamespace()
+		outputs, e := captureNamespaceWith(run)
 		if e != nil {
 			return previous, e
 		}

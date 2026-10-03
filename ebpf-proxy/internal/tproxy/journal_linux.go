@@ -29,7 +29,8 @@ type DurableIsolated struct {
 	hook         func(string, int)         // committed-boundary crash seam, tests only
 	boundaryHook func(string, string, int) // intent/applied crash seam, tests only
 	closed       bool
-	scoped       bool // explicit v3 mode; never silently reinterpret v1/v2 state
+	scoped       bool                  // explicit v3 mode; never silently reinterpret v1/v2 state
+	run          func([]string) Result // supervisor deadline; defaults unchanged
 }
 
 func privateFile(f *os.File) error {
@@ -108,6 +109,7 @@ func openDurableIsolated(dir string, plan IPv4DestinationPlan, scoped bool) (*Du
 	}
 	d := &DurableIsolated{root: root, lock: lock, steps: steps, r: journalRecord{Version: 2, Namespace: ns, Boot: strings.TrimSpace(string(boot)), Plan: plan}}
 	d.scoped = scoped
+	d.run = query
 	if scoped {
 		d.r.Version = 3
 	}
@@ -212,7 +214,7 @@ func (d *DurableIsolated) snapshot() (string, error) {
 	if !d.scoped {
 		return isolatedSnapshot()
 	}
-	w, e := observeScoped(d.r.Plan)
+	w, e := observeScopedWith(d.r.Plan, d.run)
 	if e == nil && !countsMatch(w.Counts, d.r.Owned) {
 		return "", fmt.Errorf("scoped owned-resource profile differs")
 	}
@@ -223,7 +225,7 @@ func (d *DurableIsolated) witness(index int) (resourceWitness, error) {
 	if !d.scoped {
 		return observeResources(d.r.Plan)
 	}
-	w, e := observeScoped(d.r.Plan)
+	w, e := observeScopedWith(d.r.Plan, d.run)
 	return resourceWitness{Counts: w.Counts, Whole: w.Digest, Residual: w.excluding(index)}, e
 }
 
@@ -240,7 +242,7 @@ func (d *DurableIsolated) Setup() error {
 		return fmt.Errorf("recover partial setup before starting")
 	}
 	if d.scoped {
-		w, e := observeScoped(d.r.Plan)
+		w, e := observeScopedWith(d.r.Plan, d.run)
 		if e != nil {
 			return e
 		}
@@ -337,7 +339,7 @@ func (d *DurableIsolated) change(intent string) error {
 	} else {
 		args = d.steps[index].Remove
 	}
-	if e := commandError(query(args)); e != nil {
+	if e := commandError(d.run(args)); e != nil {
 		return e
 	} // completion may be ambiguous
 	if d.boundaryHook != nil {

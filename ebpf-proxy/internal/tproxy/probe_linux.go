@@ -58,7 +58,11 @@ var probeCommands = map[string][]string{
 }
 
 func query(args []string) Result {
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	return queryContext(context.Background(), args)
+}
+
+func queryContext(parent context.Context, args []string) Result {
+	ctx, cancel := context.WithTimeout(parent, 8*time.Second)
 	defer cancel()
 	c := exec.CommandContext(ctx, args[0], args[1:]...)
 	var stderr strings.Builder

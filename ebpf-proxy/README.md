@@ -338,3 +338,44 @@ Loss of the entire supervision tree is not guaranteed fail-open.
 
 Phase evidence and limitations: `docs/TPROXY-SCOPED-RECOVERY.md` in the parent
 repository. The core remains independently buildable without module/UI paths.
+
+### Bounded scoped supervisor experiment
+
+`SuperviseScopedIsolated(ctx, stateDir, plan, options, factory)` is an independent
+native API, not a host-network setup CLI. It refuses the host namespace before
+calling a factory. The trusted factory only constructs a fresh, unstarted
+`exec.Cmd`; no shell or product/module configuration is interpreted. The
+supervisor starts/reaps the exact child and pins its identity with pidfd before
+allowing concurrent Wait. Prestarted processes are never adopted or signalled.
+
+FD 3 carries a single size-bounded newline-terminated readiness JSON:
+`{"version":1,"ready":true}`. This must be emitted by the trusted worker only
+after listener/upstream/policy readiness; stdout/stderr are not readiness.
+Incomplete, oversized, unsupported or unknown-field records are rejected
+without logging their contents. The supervisor does not independently prove
+the worker's claimed data-path readiness.
+
+One private owned `supervisor.lock` spans cleanup, child lifetime and backoff,
+preventing a second launcher between workers. Before the first launch and
+after every verified exit, v3 cleanup must succeed. Recovery failure blocks
+restart; it never adopts conflicting resources. Retry budget is 0–3 restarts,
+never reset by healthy time. Zero exit after readiness completes normally.
+Readiness is bounded to 30 seconds, TERM grace to 10 seconds, verified KILL
+wait to 5 seconds, backoff to 1 second, and recovery command context to 120
+seconds. Defaults are supplied by the consumer; tests use an 8-second grace
+because a 3-second grace interrupted legitimate Android rule cleanup.
+
+Cancellation requests TERM through pidfd: the worker must disable interception
+and drain/clean before exiting. After grace, pidfd KILL is the fallback. No
+restart/cleanup is attempted if actual exit is unverified. Cancellation cleanup
+has an independent bounded context, not the already-cancelled run context.
+Network command deadlines propagate through scoped observations and removals;
+timeout can leave a journaled partial state and blocks restart. File I/O/fsync
+and a faulty blocking factory are not hard-real-time bounded by this API.
+
+This is not production watchdog deployment or a guarantee after the supervisor
+is killed. Descendant command/process quiescence after arbitrary crashes,
+surviving anchors, readiness authenticity and host admission remain required.
+Tests kill steady-state fixtures; they do not certify command-orphan handling.
+No WebUI, installed backend selection, CA lifecycle or connection configuration
+is changed. Evidence: `docs/TPROXY-BOUNDED-SUPERVISOR.md` in the parent repository.
