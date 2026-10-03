@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-03",
+  "phase": "native registered guard and single-command supervision",
+  "device": {
+    "android": 15,
+    "sdk": 35,
+    "architecture": "arm64",
+    "kernel": "5.10.236-android12-9-00003-gfb24cf99ad97-ab14313284",
+    "rootDomain": "u:r:ksu:s0",
+    "selinux": "Enforcing"
+  },
+  "tests": {
+    "finalSourceRegisteredNative": "PASS",
+    "badReportFileUnchanged": true,
+    "badReportSeconds": 0.04,
+    "commandCases": 6,
+    "commandCasesSeconds": 0.39,
+    "workerLossCases": 3,
+    "workerLossSeconds": 37.25,
+    "ownedStepsRemovedPerRecovery": 8,
+    "foreignFixturePreserved": true,
+    "nativeTproxyFullSuite": "PASS before final report-pipe validation; final targeted suite includes validation",
+    "portableCoreTests": "PASS",
+    "linuxArm64VetCoreAndModule": "PASS",
+    "nativeModuleTests": "PASS",
+    "windowsFullModuleTests": "UNSUPPORTED: existing Linux syscall.Flock APIs"
+  },
+  "builds": {
+    "androidCoreAndBpfObject": "PASS",
+    "androidModuleBackend": "PASS",
+    "releaseZip": "NOT BUILT",
+    "moduleVersionChanged": false
+  },
+  "hostAudit": {
+    "ipv4RulesUnchanged": true,
+    "ipv6RulesUnchanged": true,
+    "ipv4MangleUnchanged": true,
+    "ipv6MangleUnchanged": true,
+    "table": 38766,
+    "ipv4TestTableEmptyBeforeAndAfter": true,
+    "ipv6TestTableEmptyBeforeAndAfter": true,
+    "hostNetworkSetupPerformed": false,
+    "netdBpfModified": false,
+    "moduleInstalled": false
+  },
+  "limitations": [
+    "Single-command supervision only; worker-wide membership and restart gating pending",
+    "Survivor loss after release/during recovery remains unadmitted",
+    "No arbitrary descendant or hostile privileged writer proof",
+    "Host fwmark collision risk unresolved; no explicit override",
+    "No production App/Yakit HTTPS or network-switch validation this round",
+    "Preexisting host TUN/VPN state not changed"
+  ]
+}

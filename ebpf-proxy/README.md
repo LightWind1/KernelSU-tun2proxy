@@ -540,3 +540,46 @@ The ordinary guard runner/supervisor/default backend remain unchanged. All-ancho
 loss after release, arbitrary descendants, noncooperative privileged writers,
 production UID/IPv6 lifecycle and host mark safety remain unadmitted.
 Evidence: `docs/TPROXY-COMMAND-HANDOFF.md` in the parent repository.
+
+### Actual registered native guard / single-command supervision
+
+`StartRegisteredScopedCommand(ctx, argv, lease, stateDir, plan)` now launches
+an actual opt-in native registered guard and a separate native survivor anchor.
+The executable must dispatch `CommandGuardEntry` before its normal CLI (as the
+standalone binary does). Private trusted configuration is delivered on inherited
+pipes; worker/guard identities and handoff channel arrive as capabilities, not
+PID files, WebUI JSON or public sockets. The guard executes the existing paused
+stub and request/ACK/confirmation protocol. Anchor holds no journal lease.
+
+`session.Wait(ctx)` verifies actual guard/anchor reaping plus a private anchor
+quiescence report. `SuperviseRegisteredScopedCommand` wraps Start/Wait for one
+command. Use a live launch deadline within eight seconds; always Wait exactly
+once, cancel its context to request guard TERM. Guard independently bounds its
+command at eight seconds, anchor observation/recovery at forty, client exit
+observation at fifty. These are cooperative bounds, not hard realtime I/O claims.
+The session pointer must not be copied or abandoned without reaping.
+
+Normal completion: anchor observes guard and direct-command pidfd exits, reports
+quiescence without touching the live worker's journal, then exits. Worker loss:
+anchor waits for all three exits and performs the original v3 pending proof /
+reverse recovery. It survives launcher/guard SIGKILL; lease availability alone
+does not permit cleanup. No arbitrary process-tree support or automatic retries.
+Lost anchor/unverified exit yields an error, never a quiescence/clean claim.
+Successful stdout/stderr capture is bounded to 64 KiB each; overflow is explicitly
+an error, not a truncated observation that can authorize ownership decisions.
+
+Control descriptors use CLOEXEC before spawning/recovery. Android fixtures
+verify no pidfd/socket capability leaks into the actual command. They test
+success, execution failure, capture overflow, cancellation, guard/anchor loss,
+and actual worker+guard loss with both retained and discarded command leases.
+After release the independent anchor reconciles and removes eight real owned
+steps while preserving a foreign chain/rule/route fixture.
+
+This is **one-command supervision**, not replacement of the old worker-wide
+`SuperviseScopedIsolated`, default `queryLeasedContext`, or the module lifecycle.
+Do not place partially registered workers under the old cleanup/retry logic and
+claim worker-wide safety: complete session membership, startup/crash windows and
+restart gating remain a separate integration phase. Anchor loss after release,
+loss during recovery, unknown descendants and hostile privileged writers remain
+unadmitted. No production host routing, backend/WebUI default or release ZIP.
+Evidence: `docs/TPROXY-REGISTERED-GUARD.md` in the parent repository.
