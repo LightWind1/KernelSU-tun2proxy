@@ -244,6 +244,12 @@ func registeredConfigPipe(cfg registeredCommandConfig) (*os.File, error) {
 }
 
 func StartRegisteredScopedCommand(ctx context.Context, args []string, lease *os.File, dir string, plan IPv4DestinationPlan) (*RegisteredCommandSession, error) {
+	return startRegisteredScopedCommand(ctx, args, lease, dir, plan, nil)
+}
+
+// Only the trusted worker broker may substitute its pre-pinned child identity.
+// Public one-command callers continue to bind the actual calling worker.
+func startRegisteredScopedCommand(ctx context.Context, args []string, lease *os.File, dir string, plan IPv4DestinationPlan, pinnedWorker *os.File) (*RegisteredCommandSession, error) {
 	if e := handoffDeadline(ctx); e != nil {
 		return nil, e
 	}
@@ -263,6 +269,12 @@ func StartRegisteredScopedCommand(ctx context.Context, args []string, lease *os.
 	}
 	worker := os.NewFile(uintptr(workerFD), "pinned-worker")
 	defer worker.Close()
+	if pinnedWorker != nil {
+		if _, e = liveHandoffPID(int(pinnedWorker.Fd())); e != nil {
+			return nil, e
+		}
+		worker = pinnedWorker
+	}
 	channels, e := unix.Socketpair(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)
 	if e != nil {
 		return nil, e
@@ -340,6 +352,10 @@ func StartRegisteredScopedCommand(ctx context.Context, args []string, lease *os.
 // an independently bounded observer still requires both actual process exits
 // and the anchor's quiescence report. It never kills the sole surviving anchor.
 func (s *RegisteredCommandSession) Wait(ctx context.Context) (RegisteredCommandResult, error) {
+	return s.wait(ctx, false)
+}
+
+func (s *RegisteredCommandSession) wait(ctx context.Context, allowRecovered bool) (RegisteredCommandResult, error) {
 	r := RegisteredCommandResult{Version: 1, Command: Result{ExitCode: -1}}
 	if s == nil || ctx == nil {
 		return r, fmt.Errorf("registered session required")
@@ -379,7 +395,14 @@ func (s *RegisteredCommandSession) Wait(ctx context.Context) (RegisteredCommandR
 	d.DisallowUnknownFields()
 	var record RegisteredCommandReport
 	var extra any
-	if e := d.Decode(&record); e != nil || record.Version != 1 || d.Decode(&extra) != io.EOF || record.State != "quiescent" || !record.Quiescent || s.anchor.ProcessState.ExitCode() != 0 {
+	if e := d.Decode(&record); e != nil || record.Version != 1 || d.Decode(&extra) != io.EOF || s.anchor.ProcessState.ExitCode() != 0 {
+		return r, fmt.Errorf("registered quiescence unverified; no cleanup/retry")
+	}
+	quiet := record.State == "quiescent" && record.Quiescent
+	if allowRecovered && record.State == "recovered" && record.Recovery.Witnesses == 3 && record.Recovery.AllExitsObserved && record.Recovery.Recovery.Clean {
+		quiet = true
+	}
+	if !quiet {
 		return r, fmt.Errorf("registered quiescence unverified; no cleanup/retry")
 	}
 	r.Quiescent = true

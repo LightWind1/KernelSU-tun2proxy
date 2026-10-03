@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-03",
+  "phase": "P0 opt-in worker command broker and restart gate",
+  "scope": "cooperative trusted worker; private network namespace; IPv4 destination plan",
+  "device": {
+    "android": 15,
+    "sdk": 35,
+    "architecture": "arm64",
+    "kernel": "5.10.236-android12-9-00003-gfb24cf99ad97-ab14313284",
+    "domain": "u:r:ksu:s0",
+    "selinux": "Enforcing"
+  },
+  "tests": {
+    "expandedBatch": "PASS",
+    "expandedCases": 16,
+    "expandedSeconds": 142.70,
+    "normalRequested": 450,
+    "normalVerified": 450,
+    "concurrentRequested": 464,
+    "concurrentVerified": 464,
+    "cancelPending": "stopped; clean; 206/206; no restart",
+    "commandExecutionFailure": "exhausted; clean; 25/25",
+    "badProtocolWrongLeaseExtraFD": "blocked; no command execution/cleanup/restart",
+    "restart": "completed; two attempts; one restart",
+    "anchorLoss": "blocked; 206/205; durable marker retained; replacement refused",
+    "preExecWorkerLoss": "PASS; blocked; no cleanup/restart",
+    "preExecWorkerLossSeconds": 8.02,
+    "launcherLoss": "PASS; worker exited; anchor waited for command; eight steps recovered; replacement refused",
+    "launcherLossSeconds": 12.58,
+    "foreignFixturePreserved": true,
+    "nativeFullTproxySuite": "PASS; final production source; before test-only expanded fixtures, separately passed",
+    "fullSuiteBrokerCases": 13,
+    "fullSuiteBrokerSeconds": 155.82,
+    "fullSuiteScopedPendingSeconds": 260.67,
+    "fullSuiteLegacySupervisorSeconds": 91.26,
+    "portableCoreTests": "PASS",
+    "registryAndCommandBoundary": "PASS",
+    "coreAndModuleLinuxArm64Vet": "PASS",
+    "nodeAppPickerAndBackend": "PASS",
+    "moduleNativeRegression": "PASS",
+    "certificateAndYakitPackages": "PASS"
+  },
+  "builds": {
+    "androidCoreAndBpf": "PASS",
+    "androidModuleBackend": "PASS",
+    "releaseZip": "NOT BUILT",
+    "versionBumped": false
+  },
+  "hostAudit": {
+    "ipv4PolicyUnchanged": true,
+    "ipv6PolicyUnchanged": true,
+    "ipv4MangleUnchanged": true,
+    "ipv6MangleUnchanged": true,
+    "table": 38766,
+    "testTablesEmptyBothFamilies": true,
+    "hostRulesWritten": false,
+    "netdBpfChanged": false,
+    "installedModuleChanged": false
+  },
+  "remainingP0": [
+    "Complete durable cohort transfer/adoption after launcher loss is not implemented; replacement remains blocked",
+    "Expand recovery-command crash-window and combined-witness-loss coverage",
+    "Expand replay/truncation/channel-loss and sustained repeated-attempt tests",
+    "Opt-in worker API is not a conversion of legacy/local writers or production module relay worker"
+  ]
+}

@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -176,6 +177,10 @@ func SuperviseScopedIsolated(ctx context.Context, dir string, p IPv4DestinationP
 }
 
 func superviseAttempt(ctx context.Context, o SupervisorOptions, number int, factory IsolatedWorkerFactory) (a SupervisedAttempt, resultErr error) {
+	return superviseAttemptWithBroker(ctx, o, number, factory, nil, nil)
+}
+
+func superviseAttemptWithBroker(ctx context.Context, o SupervisorOptions, number int, factory IsolatedWorkerFactory, channel *os.File, onPinned func(int) error) (a SupervisedAttempt, resultErr error) {
 	a = SupervisedAttempt{Number: number, ExitCode: -1, Reason: "launch_failed"}
 	cmd, e := factory(number)
 	if e != nil {
@@ -188,12 +193,21 @@ func superviseAttempt(ctx context.Context, o SupervisorOptions, number int, fact
 	if cmd == nil || len(cmd.ExtraFiles) != 0 {
 		return a, fmt.Errorf("invalid unstarted worker")
 	}
+	if channel != nil && cmd.SysProcAttr != nil {
+		return a, fmt.Errorf("broker owns worker launch attributes")
+	}
 	read, write, e := os.Pipe()
 	if e != nil {
 		return a, e
 	}
 	defer read.Close()
 	cmd.ExtraFiles = []*os.File{write}
+	if channel != nil {
+		cmd.ExtraFiles = append(cmd.ExtraFiles, channel)
+		// Brokered workers cannot survive loss of their trusted launcher. Its
+		// creating OS thread is held by the caller until this attempt is reaped.
+		cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
+	}
 	if e = cmd.Start(); e != nil {
 		write.Close()
 		return a, fmt.Errorf("worker launch failed")
@@ -220,6 +234,18 @@ func superviseAttempt(ctx context.Context, o SupervisorOptions, number int, fact
 	defer unix.Close(fd)
 	done := make(chan struct{})
 	go func() { _ = cmd.Wait(); close(done) }()
+	if onPinned != nil {
+		if e = onPinned(fd); e != nil {
+			unix.PidfdSendSignal(fd, unix.SIGKILL, nil, 0)
+			select {
+			case <-done:
+				a.ExitObserved = cmd.ProcessState != nil
+			case <-time.After(o.KillWait):
+			}
+			a.Reason = "broker_identity_failed"
+			return a, e
+		}
+	}
 	ready := make(chan error, 1)
 	go func() { ready <- readyRecord(read) }()
 	timer := time.NewTimer(o.ReadyTimeout)

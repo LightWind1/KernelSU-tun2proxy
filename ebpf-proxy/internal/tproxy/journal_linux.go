@@ -32,6 +32,7 @@ type DurableIsolated struct {
 	closed       bool
 	scoped       bool                  // explicit v3 mode; never silently reinterpret v1/v2 state
 	run          func([]string) Result // supervisor deadline; defaults unchanged
+	commandClose func()                // explicit broker capability; never present in legacy mode
 }
 
 func privateFile(f *os.File) error {
@@ -144,6 +145,9 @@ func (d *DurableIsolated) Close() error {
 		return nil
 	}
 	d.closed = true
+	if d.commandClose != nil {
+		d.commandClose()
+	}
 	e := d.lock.Close()
 	re := d.root.Close()
 	if e != nil {
