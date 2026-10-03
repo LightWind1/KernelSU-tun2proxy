@@ -62,6 +62,14 @@ func TestAnchorDelayedCommand(t *testing.T) {
 		t.Fatal("missing command lease")
 	}
 	defer lease.Close()
+	if os.Getenv("TP_ANCHOR_DISCARD_LEASE") == "1" {
+		if e := unix.Prctl(unix.PR_SET_PDEATHSIG, 0, 0, 0, 0); e != nil {
+			t.Fatal(e)
+		}
+		if e := lease.Close(); e != nil {
+			t.Fatal(e)
+		}
+	}
 	writeAnchorIdentity(t, "command.json", true)
 	deadline := time.NewTimer(6 * time.Second)
 	defer deadline.Stop()

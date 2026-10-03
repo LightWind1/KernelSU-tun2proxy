@@ -428,3 +428,43 @@ command/guard exit and lock reacquisition without kernel mutations.
 Still no production anchor deployment, host-network setup, mark-risk override,
 UID production planner, IPv6 recovery or WebUI backend activation. Evidence:
 `docs/TPROXY-SCOPED-SURVIVOR.md` in the parent repository.
+
+### Guard-loss exit witness experiment
+
+Flock availability is **not** proof of command quiescence: a direct command
+can clear PDEATHSIG and discard its inherited lease, then outlive a killed
+guard. The worker-only `WatchScopedIsolatedPIDFD` and bounded supervisor do not
+automatically solve that case. Do not use them as guard-loss recovery admission.
+
+`AcquireScopedCommandWitness(workerPidfd, guardPidfd, commandPidfd)` creates an
+opaque owned witness while all three distinct identities are still live in the
+same private netns. It duplicates descriptors, validates kernel pidfd type,
+reads live fdinfo PID metadata only for namespace/distinctness validation, and
+rechecks liveness. No numeric PID signaling or stale-journal adoption. Ordinary,
+missing, duplicate, exited and foreign-namespace identities are refused.
+
+`witness.Recover(ctx, stateDir, plan)` requires an explicit context deadline and
+waits for **all three** pinned identities to exit before opening the journal.
+It then uses the existing exact v3 pending proof/reverse cleanup. Cancellation
+while an unleased command is alive makes zero recovery mutations. Polling only
+outstanding identities avoids spinning on already-readable dead pidfds. Caller
+closure/reuse of source descriptors does not affect the owned copies; `Close`
+is idempotent and serialized with Recover (cancel first to interrupt a wait).
+Keep the returned pointer; do not copy the witness value containing ownership
+and a mutex.
+
+Android fixtures kill supervisor, worker and guard in both supported tests:
+the normal direct child exits via PDEATHSIG and pending add was not applied
+(seven owned steps recovered); the lease/PDEATHSIG-discarding child stays alive
+even though flock is available, so the witness blocks. Only after fixture-owner
+release applies the final rule and the command exits does recovery reconcile
+and remove eight steps. Foreign fixture rules are retained.
+
+This is a trusted closed set for **one direct command**, not automatic command
+registration or arbitrary process-tree tracking. The consumer must bind the
+live witness to its state/plan before launcher loss and retain a surviving
+anchor. The current command guard/supervisor does not yet transmit those pidfds
+to a deployed anchor. Missing handoff, unknown descendants, all-anchor loss and
+noncooperative privileged writers remain unadmitted. No live setup, production
+watchdog, WebUI, UDP/DNS interception or backend default change is introduced.
+Evidence: `docs/TPROXY-GUARD-LOSS-WITNESS.md` in the parent repository.

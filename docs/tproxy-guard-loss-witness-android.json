@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-03",
+  "phase": "guard-loss direct-command exit witness",
+  "scope": "private disposable netns; explicit pre-acquired closed set only",
+  "device": {
+    "serial": "5D5X5TFYDMGAEEWK",
+    "android": "15",
+    "sdk": 35,
+    "kernel": "5.10.236-android12-9-00003-gfb24cf99ad97-ab14313284",
+    "uid": 0,
+    "selinuxDomain": "u:r:ksu:s0",
+    "selinux": "Enforcing",
+    "hostNetworkNamespace": "net:[4026532071]"
+  },
+  "implementation": {
+    "opaqueOwnedPidfdWitness": true,
+    "liveDistinctSameNamespaceAdmission": true,
+    "completeRoleCount": 3,
+    "requiredRecoveryDeadline": true,
+    "allExitsBeforeJournalOpen": true,
+    "pollsOnlyOutstandingIdentities": true,
+    "usesExistingScopedV3Proof": true,
+    "configFieldsAdded": [],
+    "automaticCommandHandoff": false,
+    "defaultSupervisorWiredToWitness": false
+  },
+  "tests": {
+    "initialTargeted": {
+      "status": "PASS",
+      "seconds": 24.44
+    },
+    "finalTargeted": {
+      "status": "PASS",
+      "seconds": 23.56,
+      "additionalMissingAndForeignNamespaceChecks": true
+    },
+    "invocationIssue": "intermediate ADB push reset executable permissions; Permission denied; chmod/chown restored and test rerun; invocation not counted as PASS",
+    "fullNative": {
+      "status": "PASS",
+      "exitCode": 0,
+      "command": "TMPDIR=/data/local/tmp TP_RUN_PRIVILEGED=1 /data/local/tmp/tproxy-guard-loss-tests -test.v",
+      "guardLossWitnessSeconds": 24.68,
+      "strictCommittedWindows": 16,
+      "strictCommittedSeconds": 69.35,
+      "strictPendingWindows": 32,
+      "strictPendingSeconds": 128.65,
+      "scopedLifecycleSeconds": 52.16,
+      "scopedPendingWindows": 32,
+      "scopedPendingSeconds": 285.18,
+      "boundedSupervisorSeconds": 120.46,
+      "supervisorAdmissionSeconds": 10.25,
+      "previousScopedSurvivorSeconds": 12.02,
+      "commandCancellationSeconds": 0.12
+    },
+    "otherPassed": [
+      "Windows standalone go test -count=1 ./...",
+      "Linux arm64 go vet ./...",
+      "Android standalone native/BPF build",
+      "certificate/Yakit Go tests",
+      "Node App picker/backend regressions",
+      "module compatibility binary build into ignored storage",
+      "fresh Android native module regression"
+    ]
+  },
+  "verified": {
+    "retainedLease": {
+      "supervisorWorkerGuardKilled": true,
+      "directCommandExitedViaPdeathsig": true,
+      "pendingFinalAddApplied": false,
+      "recoveredSteps": 7,
+      "clean": true
+    },
+    "discardedLease": {
+      "supervisorWorkerGuardKilled": true,
+      "pdeathsigCleared": true,
+      "inheritedLeaseClosed": true,
+      "flockAvailableWhileCommandAlive": true,
+      "exitWitnessBlockedRecovery": true,
+      "blockedRecoveryKernelMutations": 0,
+      "fixtureReleasedFinalIptablesRule": true,
+      "allThreePinnedExitsObservedBeforeRecovery": true,
+      "recoveredSteps": 8,
+      "clean": true
+    },
+    "foreignFixturePreserved": true,
+    "sourceDescriptorClosureHarmless": true,
+    "refusals": [
+      "host namespace",
+      "foreign namespace identity",
+      "missing descriptor",
+      "ordinary file",
+      "duplicate process identity",
+      "post-exit handoff",
+      "closed/zero/nil witness",
+      "recovery without deadline"
+    ]
+  },
+  "hostBaseline": {
+    "normalization": "CRLF to LF; terminal newlines removed",
+    "checks": [
+      {
+        "name": "Rules6",
+        "beforeExitCode": 0,
+        "afterExitCode": 0,
+        "identical": true
+      },
+      {
+        "name": "Rules4",
+        "beforeExitCode": 0,
+        "afterExitCode": 0,
+        "identical": true
+      },
+      {
+        "name": "Table6",
+        "beforeExitCode": 0,
+        "afterExitCode": 0,
+        "identical": true
+      },
+      {
+        "name": "Table4",
+        "beforeExitCode": 0,
+        "afterExitCode": 0,
+        "identical": true
+      },
+      {
+        "name": "Mangle6",
+        "beforeExitCode": 0,
+        "afterExitCode": 0,
+        "identical": true
+      },
+      {
+        "name": "Mangle4",
+        "beforeExitCode": 0,
+        "afterExitCode": 0,
+        "identical": true
+      }
+    ],
+    "allSixSnapshotsIdentical": true,
+    "reservedTable": 38766,
+    "ipv4TableEmpty": true,
+    "ipv6TableEmpty": true,
+    "ownChainsAbsent": true,
+    "priority9001Absent": true,
+    "existingTunReferencesRetained": true
+  },
+  "hostNetworkRuleWrites": false,
+  "netdBpfChanged": false,
+  "installedModuleChanged": false,
+  "webuiChanged": false,
+  "releaseZipBuilt": false,
+  "versionIncremented": false,
+  "limitations": [
+    "one trusted registered direct-command set, not an arbitrary process tree",
+    "consumer must bind witness to state/plan before launcher loss",
+    "automatic native pidfd handoff and authenticated registry not implemented",
+    "old worker-only/flock-only path is not a guard-loss-safe fallback",
+    "unknown descendants and all-anchor loss not admitted",
+    "filesystem/fsync/uninterruptible commands and external writers not hard-real-time/atomic",
+    "real App HTTPS/Yakit, IPv6, host mark-risk admission and backend/network switching not verified"
+  ]
+}
