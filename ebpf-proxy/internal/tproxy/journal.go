@@ -23,6 +23,10 @@ type journalRecord struct {
 }
 
 func decodeJournal(b []byte, plan IPv4DestinationPlan, namespace, boot string) (journalRecord, error) {
+	return decodeJournalMode(b, plan, namespace, boot, false)
+}
+
+func decodeJournalMode(b []byte, plan IPv4DestinationPlan, namespace, boot string, scoped bool) (journalRecord, error) {
 	var r journalRecord
 	if len(b) > 65536 {
 		return r, fmt.Errorf("journal too large")
@@ -40,7 +44,11 @@ func decodeJournal(b []byte, plan IPv4DestinationPlan, namespace, boot string) (
 	if e != nil {
 		return r, e
 	}
-	if (r.Version != 1 && r.Version != 2) || r.Namespace != namespace || r.Boot != boot || r.Plan != plan || r.Owned < 0 || r.Owned > len(steps) {
+	validVersion := r.Version == 1 || r.Version == 2
+	if scoped {
+		validVersion = r.Version == 3
+	}
+	if !validVersion || r.Namespace != namespace || r.Boot != boot || r.Plan != plan || r.Owned < 0 || r.Owned > len(steps) {
 		return r, fmt.Errorf("journal identity/configuration mismatch")
 	}
 	if r.Pending != "" && r.Pending != "add" && r.Pending != "remove" {
@@ -53,7 +61,7 @@ func decodeJournal(b []byte, plan IPv4DestinationPlan, namespace, boot string) (
 		return r, fmt.Errorf("invalid snapshot digest")
 	}
 	if r.PendingProof != "" {
-		if digest, e := hex.DecodeString(r.PendingProof); e != nil || len(digest) != sha256.Size || r.Version != 2 || r.Pending == "" {
+		if digest, e := hex.DecodeString(r.PendingProof); e != nil || len(digest) != sha256.Size || (r.Version != 2 && r.Version != 3) || r.Pending == "" {
 			return r, fmt.Errorf("invalid pending witness")
 		}
 	}

@@ -304,3 +304,37 @@ conversion to SOCKS5. Standalone preflight has no dependency on this adapter.
 
 Device evidence: `docs/TPROXY-PREFLIGHT.md` and
 `docs/tproxy-preflight-android.json` in the parent repository.
+
+### Scoped recovery experiment (IPv4 private namespaces only)
+
+`OpenScopedIsolated` selects a separate version-3 journal mode. It inherits
+private owned state, strict identity/plan validation, flock/fsync and exact
+reverse removal from `DurableIsolated`, but witnesses only the eight reserved
+resources. Changes to unrelated firewall chains, disjoint policy marks/tables
+and outside routes do not invalidate recovery. Two complete observations must
+agree on the reserved footprint; exact rule checks still use `iptables -C`.
+
+Reserved-prefix collisions, unexpected chain jumps/gotos, priority/table
+references, routes in the reserved table and overlapping packet-mark use are
+conflicts, not resources to adopt/delete. Unknown table aliases and duplicate
+or modified owned resources also fail closed for recovery. The separate
+preflight/vendor mark-safety gate is unchanged.
+
+Each v3 pending proof excludes exactly the intended resource, preserving the
+other seven. Reconciliation still permits only no operation or exactly one
+planned operation. `WatchScopedIsolatedWorker` waits for the actual trusted
+child exit before acquiring state and recovering. Version 1/2 readers reject
+v3; the v3 reader rejects v1/2. No automatic migration weakens old journals.
+
+Android tests cover three repeated cycles, interference refusal without
+mutation, and all 32 before/after add/remove crash windows with unrelated
+netd-shaped fixtures present. Existing strict recovery and relay tests remain.
+These are private fixtures, not real netd concurrency. This mode still rejects
+the host namespace. No host setup CLI, production supervisor deployment, UID
+production planner, IPv6 recovery or WebUI backend is introduced. An external
+privileged writer replacing an identical resource is not distinguishable;
+observing then modifying the kernel is not an atomic transaction against it.
+Loss of the entire supervision tree is not guaranteed fail-open.
+
+Phase evidence and limitations: `docs/TPROXY-SCOPED-RECOVERY.md` in the parent
+repository. The core remains independently buildable without module/UI paths.

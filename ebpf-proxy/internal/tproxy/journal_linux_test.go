@@ -59,7 +59,11 @@ func TestJournalCrashWorker(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	d, e := OpenDurableIsolated(dir, journalPlan())
+	opener := OpenDurableIsolated
+	if os.Getenv("TP_JOURNAL_SCOPED") == "1" {
+		opener = OpenScopedIsolated
+	}
+	d, e := opener(dir, journalPlan())
 	if e != nil {
 		t.Fatal(e)
 	}

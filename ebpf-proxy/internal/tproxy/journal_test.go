@@ -11,6 +11,25 @@ func journalPlan() IPv4DestinationPlan {
 	return IPv4DestinationPlan{Destination: netip.MustParseAddrPort("198.18.0.1:443"), ListenerPort: 18080, Mark: 1 << 22, Mask: 1 << 22, Table: 38766, Priority: 9001, Prefix: "ATP_JOURNAL"}
 }
 
+func TestScopedJournalModeIsExplicit(t *testing.T) {
+	p := journalPlan()
+	r := journalRecord{Version: 3, Namespace: "net:[123]", Boot: "boot", Plan: p, Owned: 0, Snapshot: strings.Repeat("a", 64), Pending: "add", PendingProof: strings.Repeat("b", 64)}
+	b, _ := json.Marshal(r)
+	if _, e := decodeJournalMode(b, p, r.Namespace, r.Boot, true); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := decodeJournal(b, p, r.Namespace, r.Boot); e == nil {
+		t.Fatal("strict mode silently adopted scoped state")
+	}
+	for _, version := range []int{1, 2, 4} {
+		r.Version = version
+		b, _ = json.Marshal(r)
+		if _, e := decodeJournalMode(b, p, r.Namespace, r.Boot, true); e == nil {
+			t.Fatal("scoped mode silently migrated old/unknown state")
+		}
+	}
+}
+
 func TestJournalIdentityAndSchema(t *testing.T) {
 	p := journalPlan()
 	r := journalRecord{Version: 1, Namespace: "net:[123]", Boot: "boot", Plan: p, Owned: 8, Snapshot: strings.Repeat("a", 64)}

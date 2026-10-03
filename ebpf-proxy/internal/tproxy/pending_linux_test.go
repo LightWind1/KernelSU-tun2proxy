@@ -14,10 +14,23 @@ import (
 )
 
 func pendingWorker(t *testing.T, dir, operation, stage string, owned int) (*exec.Cmd, context.CancelFunc) {
+	return pendingWorkerMode(t, dir, operation, stage, owned, false)
+}
+
+func pendingWorkerMode(t *testing.T, dir, operation, stage string, owned int, scoped bool) (*exec.Cmd, context.CancelFunc) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	timeout := 15 * time.Second
+	if scoped {
+		timeout = 45 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	c := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestJournalCrashWorker$", "-test.v")
 	c.Env = append(os.Environ(), "TP_JOURNAL_DIR="+dir, "TP_JOURNAL_OPERATION="+operation, "TP_JOURNAL_STAGE="+stage, fmt.Sprintf("TP_JOURNAL_BOUNDARY=%d", owned))
+	mode := "0"
+	if scoped {
+		mode = "1"
+	}
+	c.Env = append(c.Env, "TP_JOURNAL_SCOPED="+mode)
 	pipe, e := c.StdoutPipe()
 	if e != nil {
 		cancel()

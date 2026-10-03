@@ -29,6 +29,16 @@ type GuardianResult struct {
 // journals still need investigation; this is not a deployed production watchdog
 // or a guarantee of fail-open after loss of all supervisors.
 func WatchIsolatedWorker(worker *exec.Cmd, dir string, plan IPv4DestinationPlan) (GuardianResult, error) {
+	return watchIsolatedWorker(worker, dir, plan, false)
+}
+
+// WatchScopedIsolatedWorker is a bounded child-exit guardian for explicit v3
+// state. Like the strict guardian, it never admits the host network namespace.
+func WatchScopedIsolatedWorker(worker *exec.Cmd, dir string, plan IPv4DestinationPlan) (GuardianResult, error) {
+	return watchIsolatedWorker(worker, dir, plan, true)
+}
+
+func watchIsolatedWorker(worker *exec.Cmd, dir string, plan IPv4DestinationPlan, scoped bool) (GuardianResult, error) {
 	var result GuardianResult
 	ns, e := os.Readlink("/proc/self/ns/net")
 	if e != nil {
@@ -51,12 +61,16 @@ func WatchIsolatedWorker(worker *exec.Cmd, dir string, plan IPv4DestinationPlan)
 	if s, ok := worker.ProcessState.Sys().(syscall.WaitStatus); ok && s.Signaled() {
 		result.Signal = s.Signal().String()
 	}
-	e = recoverIsolatedExit(&result, dir, plan)
+	e = recoverIsolatedExitMode(&result, dir, plan, scoped)
 	return result, e
 }
 
 func recoverIsolatedExit(result *GuardianResult, dir string, plan IPv4DestinationPlan) error {
-	d, e := OpenDurableIsolated(dir, plan)
+	return recoverIsolatedExitMode(result, dir, plan, false)
+}
+
+func recoverIsolatedExitMode(result *GuardianResult, dir string, plan IPv4DestinationPlan, scoped bool) error {
+	d, e := openDurableIsolated(dir, plan, scoped)
 	if e != nil {
 		return e
 	}

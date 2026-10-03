@@ -25,7 +25,7 @@ type MarkUse struct {
 	Rule   string `json:"rule"`
 }
 
-var markPattern = regexp.MustCompile(`(fwmark|--set-xmark|--set-mark|--mark|--nfmask|--ctmask|--and-mark|--or-mark|--xor-mark)\s+(0x[0-9a-fA-F]+|[0-9]+)(?:/(0x[0-9a-fA-F]+|[0-9]+))?`)
+var markPattern = regexp.MustCompile(`(fwmark|--set-xmark|--set-mark|--tproxy-mark|--mark|--nfmask|--ctmask|--and-mark|--or-mark|--xor-mark)\s+(0x[0-9a-fA-F]+|[0-9]+)(?:/(0x[0-9a-fA-F]+|[0-9]+))?`)
 
 func MarkUses(source, text string) []MarkUse {
 	var uses []MarkUse

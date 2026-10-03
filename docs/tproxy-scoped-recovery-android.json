@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-03",
+  "deviceSerial": "5D5X5TFYDMGAEEWK",
+  "hostNetworkMutations": false,
+  "rootBaselineChecks": {
+    "Rules4": {
+      "exitCode": 0,
+      "unchanged": true
+    },
+    "Rules6": {
+      "exitCode": 0,
+      "unchanged": true
+    },
+    "Mangle4": {
+      "exitCode": 0,
+      "unchanged": true
+    },
+    "Mangle6": {
+      "exitCode": 0,
+      "unchanged": true
+    },
+    "Table4": {
+      "exitCode": 0,
+      "unchanged": true
+    },
+    "Table6": {
+      "exitCode": 0,
+      "unchanged": true
+    }
+  },
+  "device": {
+    "Android": {
+      "ExitCode": 0,
+      "Output": "15"
+    },
+    "SDK": {
+      "ExitCode": 0,
+      "Output": "35"
+    },
+    "Kernel": {
+      "ExitCode": 0,
+      "Output": "Linux localhost 5.10.236-android12-9-00003-gfb24cf99ad97-ab14313284 #1 SMP PREEMPT Tue Oct 21 03:03:12 UTC 2025 aarch64 Toybox"
+    },
+    "Identity": {
+      "ExitCode": 0,
+      "Output": "uid=0(root) gid=0(root) groups=0(root),1004(input),1007(log),1011(adb),1015(sdcard_rw),1028(sdcard_r),1078(ext_data_rw),1079(ext_obb_rw),3001(net_bt_admin),3002(net_bt),3003(inet),3006(net_bw_stats),3009(readproc),3011(uhid),3012(readtracefs) context=u:r:ksu:s0"
+    },
+    "SELinux": {
+      "ExitCode": 0,
+      "Output": "Enforcing"
+    }
+  },
+  "tests": {
+    "nativeTPROXY": "PASS",
+    "strictCommittedWindows": 16,
+    "strictPendingWindows": 32,
+    "scopedPendingWindows": 32,
+    "scopedPendingSeconds": 195.7,
+    "scopedLifecycleSeconds": 33.14,
+    "foreignFixturePreserved": true,
+    "collisionRefusalZeroMutations": true,
+    "existingModuleTests": "PASS",
+    "windowsCore": "PASS",
+    "certificateYakit": "PASS",
+    "nodeRegressions": "PASS",
+    "linuxArm64Vet": "PASS",
+    "androidBuild": "PASS",
+    "raceDetector": "not run: CGO disabled/no host GCC"
+  },
+  "productionSetupEnabled": false,
+  "webUIChanged": false,
+  "releaseZipBuilt": false
+}

@@ -17,7 +17,8 @@ import (
 // DurableIsolated is intentionally NOT a host-network setup API. A private
 // namespace and exclusive cooperative writer are required. Version-2 pending
 // intents admit only an individually verified single-operation outcome with
-// unchanged residual state. Legacy/unverifiable intents and foreign changes
+// unchanged residual state. Explicit version-3 mode witnesses the reserved
+// footprint instead. Legacy/unverifiable intents and interfering changes
 // still require investigation; journals never contain executable commands.
 type DurableIsolated struct {
 	mu           sync.Mutex
@@ -28,6 +29,7 @@ type DurableIsolated struct {
 	hook         func(string, int)         // committed-boundary crash seam, tests only
 	boundaryHook func(string, string, int) // intent/applied crash seam, tests only
 	closed       bool
+	scoped       bool // explicit v3 mode; never silently reinterpret v1/v2 state
 }
 
 func privateFile(f *os.File) error {
@@ -43,6 +45,16 @@ func privateFile(f *os.File) error {
 }
 
 func OpenDurableIsolated(dir string, plan IPv4DestinationPlan) (*DurableIsolated, error) {
+	return openDurableIsolated(dir, plan, false)
+}
+
+// OpenScopedIsolated validates only the reserved footprint. It still rejects
+// the host namespace and does not expose a live setup/override mechanism.
+func OpenScopedIsolated(dir string, plan IPv4DestinationPlan) (*DurableIsolated, error) {
+	return openDurableIsolated(dir, plan, true)
+}
+
+func openDurableIsolated(dir string, plan IPv4DestinationPlan, scoped bool) (*DurableIsolated, error) {
 	ns, e := os.Readlink("/proc/self/ns/net")
 	if e != nil {
 		return nil, e
@@ -95,6 +107,10 @@ func OpenDurableIsolated(dir string, plan IPv4DestinationPlan) (*DurableIsolated
 		return fail(fmt.Errorf("state locked: %w", e))
 	}
 	d := &DurableIsolated{root: root, lock: lock, steps: steps, r: journalRecord{Version: 2, Namespace: ns, Boot: strings.TrimSpace(string(boot)), Plan: plan}}
+	d.scoped = scoped
+	if scoped {
+		d.r.Version = 3
+	}
 	f, e := root.OpenFile("journal.json", os.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
 	if os.IsNotExist(e) {
 		return d, nil
@@ -110,7 +126,7 @@ func OpenDurableIsolated(dir string, plan IPv4DestinationPlan) (*DurableIsolated
 	if e != nil {
 		return fail(e)
 	}
-	d.r, e = decodeJournal(b, plan, ns, d.r.Boot)
+	d.r, e = decodeJournalMode(b, plan, ns, d.r.Boot, scoped)
 	if e != nil {
 		return fail(e)
 	}
@@ -182,7 +198,7 @@ func (d *DurableIsolated) check() error {
 	if d.r.Pending != "" {
 		return fmt.Errorf("uncertain %s intent: refusing automatic recovery", d.r.Pending)
 	}
-	s, e := isolatedSnapshot()
+	s, e := d.snapshot()
 	if e != nil {
 		return e
 	}
@@ -190,6 +206,25 @@ func (d *DurableIsolated) check() error {
 		return fmt.Errorf("external resource change: refusing recovery")
 	}
 	return nil
+}
+
+func (d *DurableIsolated) snapshot() (string, error) {
+	if !d.scoped {
+		return isolatedSnapshot()
+	}
+	w, e := observeScoped(d.r.Plan)
+	if e == nil && !countsMatch(w.Counts, d.r.Owned) {
+		return "", fmt.Errorf("scoped owned-resource profile differs")
+	}
+	return w.Digest, e
+}
+
+func (d *DurableIsolated) witness(index int) (resourceWitness, error) {
+	if !d.scoped {
+		return observeResources(d.r.Plan)
+	}
+	w, e := observeScoped(d.r.Plan)
+	return resourceWitness{Counts: w.Counts, Whole: w.Digest, Residual: w.excluding(index)}, e
 }
 
 func (d *DurableIsolated) Setup() error {
@@ -203,6 +238,25 @@ func (d *DurableIsolated) Setup() error {
 	}
 	if d.r.Owned != 0 {
 		return fmt.Errorf("recover partial setup before starting")
+	}
+	if d.scoped {
+		w, e := observeScoped(d.r.Plan)
+		if e != nil {
+			return e
+		}
+		if !countsMatch(w.Counts, 0) {
+			return fmt.Errorf("pre-existing reserved resources cannot be adopted")
+		}
+		d.r.Snapshot = w.Digest
+		if e = d.save(); e != nil {
+			return e
+		}
+		for d.r.Owned < len(d.steps) {
+			if e = d.change("add"); e != nil {
+				return e
+			}
+		}
+		return nil
 	}
 	// Only fresh private namespaces are admitted. This is conservative and
 	// deliberately unsuitable for adoption of Android's live firewall.
@@ -253,7 +307,11 @@ func (d *DurableIsolated) change(intent string) error {
 	if e := d.check(); e != nil {
 		return e
 	}
-	w, e := observeResources(d.r.Plan)
+	index := d.r.Owned
+	if intent == "remove" {
+		index--
+	}
+	w, e := d.witness(index)
 	if e != nil {
 		return e
 	}
@@ -262,6 +320,9 @@ func (d *DurableIsolated) change(intent string) error {
 	}
 	before := d.r
 	d.r.Version = 2
+	if d.scoped {
+		d.r.Version = 3
+	}
 	d.r.Pending = intent
 	d.r.PendingProof = w.Residual
 	if e := d.save(); e != nil {
@@ -270,12 +331,10 @@ func (d *DurableIsolated) change(intent string) error {
 	if d.boundaryHook != nil {
 		d.boundaryHook("intent", intent, d.r.Owned)
 	}
-	index := d.r.Owned
 	var args []string
 	if intent == "add" {
 		args = d.steps[index].Add
 	} else {
-		index--
 		args = d.steps[index].Remove
 	}
 	if e := commandError(query(args)); e != nil {
@@ -289,7 +348,7 @@ func (d *DurableIsolated) change(intent string) error {
 	} else {
 		d.r.Owned--
 	}
-	s, e := isolatedSnapshot()
+	s, e := d.snapshot()
 	if e != nil {
 		d.r.Owned = before.Owned
 		return e
@@ -311,7 +370,8 @@ func (d *DurableIsolated) change(intent string) error {
 }
 
 // Recover disables the entrance first, then removes exact owned dependencies.
-// Committed and precisely witnessed version-2 pending boundaries are supported.
+// Committed and precisely witnessed version-2/explicit-v3 pending boundaries
+// are supported; neither mode is admitted on the host network namespace.
 func (d *DurableIsolated) Recover() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -335,12 +395,17 @@ func (d *DurableIsolated) Recover() error {
 }
 
 // reconcile admits only the two precisely witnessed outcomes: no operation,
-// or exactly one planned resource addition/removal with unchanged residual.
+// or exactly one planned resource addition/removal. Strict mode requires an
+// unchanged residual; scoped mode requires the other seven resources unchanged.
 func (d *DurableIsolated) reconcile() error {
-	if d.r.Version != 2 || d.r.PendingProof == "" {
+	if (d.r.Version != 2 && d.r.Version != 3) || d.r.PendingProof == "" {
 		return fmt.Errorf("unwitnessed legacy intent: refusing recovery")
 	}
-	w, e := observeResources(d.r.Plan)
+	index := d.r.Owned
+	if d.r.Pending == "remove" {
+		index--
+	}
+	w, e := d.witness(index)
 	if e != nil {
 		return e
 	}
