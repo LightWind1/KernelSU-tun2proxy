@@ -1,0 +1,44 @@
+{
+  "phase": "isolated-native-command-admission-primitive",
+  "date": "2026-10-03",
+  "device": {
+    "android": "15",
+    "sdk": 35,
+    "kernel": "5.10.236-android12-9-00003-gfb24cf99ad97-ab14313284",
+    "root_domain": "u:r:ksu:s0",
+    "selinux": "Enforcing",
+    "host_netns": "net:[4026532071]"
+  },
+  "tests": {
+    "final_admission_native": "PASS",
+    "final_admission_seconds": 0.89,
+    "private_admission_subcases": 11,
+    "native_tproxy_full_suite": "PASS exit 0",
+    "full_suite_binary": "before final nil/zero defensive checks; final targeted tests recompiled separately",
+    "windows_core": "PASS",
+    "linux_arm64_vet": "PASS",
+    "android_native_and_bpf_build": "PASS",
+    "certificate_yakit_units": "PASS",
+    "app_picker_backend_node": "PASS",
+    "module_android_build": "PASS",
+    "module_native_android_tests": "PASS"
+  },
+  "host_baseline": {
+    "ipv4_rule_unchanged": true,
+    "ipv6_rule_unchanged": true,
+    "ipv4_table_38766_empty_unchanged": true,
+    "ipv6_table_38766_empty_unchanged": true,
+    "priority_9001_absent": true,
+    "project_chains_absent": true,
+    "mangle_full_snapshot_unchanged": false,
+    "both_families_added": "-A tc_limiter_OUTPUT -m owner --uid-owner 10174 -j CONNMARK --set-xmark 0x10000000/0x10000000",
+    "actor": "untraced; unrelated vendor entry retained"
+  },
+  "host_network_setup": false,
+  "netd_bpf_modified": false,
+  "webui_modified": false,
+  "module_installed": false,
+  "release_zip_created": false,
+  "production_anchor_ipc_complete": false,
+  "next_gate": "cross-process descriptor registration and anchor ACK before command release"
+}

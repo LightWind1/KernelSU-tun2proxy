@@ -468,3 +468,29 @@ to a deployed anchor. Missing handoff, unknown descendants, all-anchor loss and
 noncooperative privileged writers remain unadmitted. No live setup, production
 watchdog, WebUI, UDP/DNS interception or backend default change is introduced.
 Evidence: `docs/TPROXY-GUARD-LOSS-WITNESS.md` in the parent repository.
+
+### Pre-exec admission primitive (isolated, opt-in)
+
+`StartPausedScopedCommand(ctx, argv, lease)` launches a native exec stub with
+the private journal lease on FD 3 and an inherited SOCK_SEQPACKET gate on FD 4.
+It requires a live deadline within eight seconds and refuses the host netns.
+No shell is introduced. The stub cannot exec until it receives exactly one
+version-1 acknowledgement; EOF, timeout, malformed data or ancillary FDs fail.
+
+`paused.Admit(workerPidfd, guardPidfd)` first acquires the three-identity exit
+witness, then sends the acknowledgement. Failed validation is terminal and
+kills/reaps the stub. Repeated admission is refused. Exec preserves the pinned
+command identity. Keep the returned witness pointer in a trusted surviving
+anchor bound to the exact state/plan. `Wait` reaps; `Abort` kills/reaps only this
+owned direct command. Cancel the launch context to interrupt a running Wait.
+
+This is a **local trusted-launcher primitive**, not a completed cross-process
+anchor registration protocol. The existing guard dispatch understands the new
+stub token, but its ordinary v1 runner and the supervisor remain unchanged.
+No automatic safe-recovery claim applies to those old paths. Production still
+needs authenticated descriptor transfer, anchor acknowledgement before release,
+and tests of anchor/guard loss at each handoff boundary. Arbitrary descendants,
+all-anchor loss, host-network activation and mark-risk override remain outside
+admission. Android tests prove refused commands have no file side effect and
+an admitted real iptables chain is created/deleted only in a private netns.
+Evidence: `docs/TPROXY-COMMAND-ADMISSION.md` in the parent repository.

@@ -22,6 +22,9 @@ const commandGuardArgument = "__tproxy-command-guard-v1"
 // supplies argv and the inherited owned journal lease on FD 3. No shell, saved
 // module config or upstream protocol is interpreted here.
 func CommandGuardEntry(args []string) (int, bool) {
+	if len(args) > 1 && args[1] == commandAdmissionArgument {
+		return commandAdmissionEntry(args), true
+	}
 	if len(args) < 2 || args[1] != commandGuardArgument {
 		return 0, false
 	}
